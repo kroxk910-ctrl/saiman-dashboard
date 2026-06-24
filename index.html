@@ -1,0 +1,1559 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Склад · Заказы заводу</title>
+<style>
+  :root{
+    --bg: #0f1214;
+    --panel: #161a1d;
+    --panel-2: #1c2125;
+    --line: #2a3036;
+    --line-soft: #22272b;
+    --ink: #e8eaec;
+    --ink-dim: #9aa3a9;
+    --ink-faint: #5e666c;
+    --accent: #e8a33d;
+    --accent-dim: #5c4a2a;
+    --ok: #5fb88c;
+    --ok-bg: #1a2620;
+    --wait: #d99a3d;
+    --wait-bg: #2a2117;
+    --danger: #d9614f;
+    --danger-bg: #2a1916;
+    --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+
+  /* ===== Header ===== */
+  .topbar{
+    position:sticky; top:0; z-index:50;
+    background:rgba(15,18,20,0.96);
+    backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);
+  }
+  .topbar-inner{
+    max-width:1280px; margin:0 auto;
+    padding:18px 24px;
+    display:flex; align-items:center; justify-content:space-between;
+    gap:24px;
+  }
+  .brand{display:flex; align-items:baseline; gap:10px;}
+  .brand-mark{
+    font-family:var(--mono); font-size:13px; font-weight:600;
+    color:var(--accent); letter-spacing:0.08em;
+    border:1px solid var(--accent-dim); border-radius:4px;
+    padding:3px 7px;
+  }
+  .brand-title{font-size:17px; font-weight:600; letter-spacing:-0.01em;}
+  .brand-sub{color:var(--ink-faint); font-size:13px; margin-left:4px;}
+
+  .status-cluster{display:flex; align-items:center; gap:18px;}
+  .sync-pill{
+    display:flex; align-items:center; gap:7px;
+    font-family:var(--mono); font-size:12px; color:var(--ink-dim);
+    padding:6px 10px; border:1px solid var(--line); border-radius:20px;
+  }
+  .user-pill{
+    font-family:var(--sans); font-size:13px; font-weight:600; color:var(--accent);
+  }
+  .sync-dot{width:6px; height:6px; border-radius:50%; background:var(--ok); flex-shrink:0;}
+  .sync-dot.spin{
+    background:var(--accent);
+    animation:pulse 1s ease-in-out infinite;
+  }
+  .sync-dot.err{background:var(--danger);}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
+  .refresh-btn{
+    background:none; border:1px solid var(--line); color:var(--ink-dim);
+    font-family:var(--sans); font-size:13px; font-weight:500;
+    padding:7px 14px; border-radius:20px; cursor:pointer;
+    transition:all .15s ease;
+  }
+  .refresh-btn:hover{border-color:var(--accent); color:var(--accent);}
+  .refresh-btn:active{transform:scale(0.97);}
+
+  /* ===== Tabs ===== */
+  .tabs{
+    max-width:1280px; margin:0 auto;
+    padding:0 24px;
+    display:flex; gap:4px;
+    border-bottom:1px solid var(--line);
+  }
+  .tab-btn{
+    background:none; border:none; cursor:pointer;
+    font-family:var(--sans); font-size:14px; font-weight:600;
+    color:var(--ink-faint);
+    padding:13px 4px; margin-right:28px;
+    border-bottom:2px solid transparent;
+    transition:color .15s ease;
+    display:flex; align-items:center; gap:8px;
+  }
+  .tab-btn .count{
+    font-family:var(--mono); font-size:11px; font-weight:500;
+    background:var(--panel-2); color:var(--ink-dim);
+    padding:1px 7px; border-radius:10px;
+  }
+  .tab-btn.active{color:var(--ink); border-bottom-color:var(--accent);}
+  .tab-btn.active .count{background:var(--accent-dim); color:var(--accent);}
+  .tab-btn:hover:not(.active){color:var(--ink-dim);}
+
+  /* ===== Main ===== */
+  main{max-width:1280px; margin:0 auto; padding:24px;}
+  .view{display:none;}
+  .view.active{display:block;}
+
+  /* ===== Toolbar ===== */
+  .toolbar{
+    display:flex; align-items:center; gap:10px;
+    margin-bottom:16px; flex-wrap:wrap;
+  }
+  .search-box{
+    position:relative; flex:1; min-width:220px; max-width:360px;
+  }
+  .search-box input{
+    width:100%;
+    background:var(--panel); border:1px solid var(--line);
+    color:var(--ink); font-family:var(--sans); font-size:13px;
+    padding:9px 12px 9px 32px; border-radius:7px;
+    outline:none; transition:border-color .15s ease;
+  }
+  .search-box input:focus{border-color:var(--accent);}
+  .search-box::before{
+    content:"";
+    position:absolute; left:11px; top:50%; transform:translateY(-50%);
+    width:13px; height:13px;
+    border:1.5px solid var(--ink-faint); border-radius:50%;
+    pointer-events:none;
+  }
+  .search-box::after{
+    content:"";
+    position:absolute; left:20px; top:62%;
+    width:5px; height:1.5px; background:var(--ink-faint);
+    transform:rotate(45deg);
+    pointer-events:none;
+  }
+  .filter-chip{
+    background:var(--panel); border:1px solid var(--line); color:var(--ink-dim);
+    font-family:var(--sans); font-size:12.5px; font-weight:500;
+    padding:8px 13px; border-radius:7px; cursor:pointer;
+    transition:all .15s ease; white-space:nowrap;
+  }
+  .filter-chip:hover{border-color:var(--ink-faint); color:var(--ink);}
+  .filter-chip.active{background:var(--accent-dim); border-color:var(--accent); color:var(--accent);}
+  .toolbar-spacer{flex:1;}
+  .row-count{font-family:var(--mono); font-size:12px; color:var(--ink-faint);}
+
+  .new-order-btn{
+    background:var(--accent); border:1px solid var(--accent); color:#1a1410;
+    font-family:var(--sans); font-size:13px; font-weight:600;
+    padding:8px 16px; border-radius:7px; cursor:pointer;
+    transition:all .15s ease; white-space:nowrap;
+  }
+  .new-order-btn:hover{background:#f0b34f;}
+  .new-order-btn:active{transform:scale(0.97);}
+
+  /* ===== Modal ===== */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,0.6);
+    display:none; align-items:center; justify-content:center;
+    z-index:100; padding:20px;
+  }
+  .modal-overlay.open{display:flex;}
+  .modal-box{
+    background:var(--panel); border:1px solid var(--line); border-radius:11px;
+    width:100%; max-width:440px; padding:24px;
+    box-shadow:0 20px 60px rgba(0,0,0,0.5);
+  }
+  .modal-header{display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;}
+  .modal-title{font-size:16px; font-weight:600; color:var(--ink);}
+  .modal-close{
+    background:none; border:none; color:var(--ink-faint); font-size:20px;
+    cursor:pointer; line-height:1; padding:0 4px;
+  }
+  .modal-close:hover{color:var(--ink);}
+  .form-field{margin-bottom:14px;}
+  .form-field label{
+    display:block; font-size:12.5px; font-weight:600; color:var(--ink-dim);
+    margin-bottom:6px;
+  }
+  .form-field .required{color:var(--accent);}
+  .form-field input, .form-field textarea{
+    width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--ink);
+    font-family:var(--sans); font-size:13.5px; padding:9px 12px; border-radius:7px;
+    outline:none; transition:border-color .15s ease; resize:vertical;
+  }
+  .form-field input:focus, .form-field textarea:focus{border-color:var(--accent);}
+  .form-field input[readonly]{
+    color:var(--ink-dim); cursor:default; background:var(--panel);
+  }
+  .modal-actions{display:flex; gap:10px; margin-top:20px;}
+  .modal-btn{
+    flex:1; padding:10px 16px; border-radius:7px; font-size:13.5px; font-weight:600;
+    cursor:pointer; transition:all .15s ease; border:1px solid var(--line);
+  }
+  .modal-btn.cancel{background:none; color:var(--ink-dim);}
+  .modal-btn.cancel:hover{border-color:var(--ink-faint); color:var(--ink);}
+  .modal-btn.submit{background:var(--accent); border-color:var(--accent); color:#1a1410;}
+  .modal-btn.submit:hover{background:#f0b34f;}
+  .modal-btn.submit:disabled{opacity:0.5; cursor:not-allowed;}
+  .form-error{
+    font-size:12.5px; color:var(--danger); margin-top:-6px; margin-bottom:12px;
+    display:none;
+  }
+  .form-error.show{display:block;}
+  .modal-box-wide{max-width:520px;}
+
+  .item-row{
+    display:flex; gap:8px; margin-bottom:8px; align-items:flex-start;
+  }
+  .item-row input.item-code{flex:1; min-width:0;}
+  .item-row input.item-qty{width:90px; flex-shrink:0;}
+  .item-remove{
+    background:none; border:1px solid var(--line); color:var(--ink-faint);
+    width:36px; height:36px; flex-shrink:0; border-radius:7px; cursor:pointer;
+    font-size:16px; line-height:1; display:flex; align-items:center; justify-content:center;
+    transition:all .15s ease;
+  }
+  .item-remove:hover{border-color:var(--danger); color:var(--danger);}
+  .item-remove:disabled{opacity:0.3; cursor:not-allowed;}
+  .item-row input.item-code, .item-row input.item-qty{
+    background:var(--panel-2); border:1px solid var(--line); color:var(--ink);
+    font-family:var(--sans); font-size:13.5px; padding:9px 12px; border-radius:7px;
+    outline:none; transition:border-color .15s ease;
+  }
+  .item-row input.item-code:focus, .item-row input.item-qty:focus{border-color:var(--accent);}
+  .add-item-btn{
+    background:none; border:1px dashed var(--line); color:var(--ink-dim);
+    font-family:var(--sans); font-size:12.5px; font-weight:600;
+    padding:8px 14px; border-radius:7px; cursor:pointer; width:100%;
+    transition:all .15s ease; margin-top:2px;
+  }
+  .add-item-btn:hover{border-color:var(--accent); color:var(--accent);}
+
+  .reserve-item-row{
+    background:var(--panel-2); border:1px solid var(--line); border-radius:8px;
+    padding:10px; margin-bottom:8px;
+  }
+  .reserve-item-top{display:flex; gap:8px; margin-bottom:8px;}
+  .reserve-item-top input.item-code{flex:2; min-width:0;}
+  .reserve-item-top input.item-qty{width:80px; flex-shrink:0;}
+  .reserve-item-bottom{display:flex; align-items:center; gap:10px;}
+  .reserve-checkbox-label{
+    display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink-dim);
+    cursor:pointer; white-space:nowrap; user-select:none;
+  }
+  .reserve-checkbox-label input[type="checkbox"]{
+    width:15px; height:15px; accent-color:var(--accent); cursor:pointer; margin:0;
+  }
+  .reserve-item-bottom input.item-sum{
+    flex:1; min-width:0; display:none;
+    background:var(--panel); border:1px solid var(--line); color:var(--ink);
+    font-family:var(--sans); font-size:13px; padding:7px 10px; border-radius:6px;
+    outline:none;
+  }
+  .reserve-item-bottom input.item-sum.visible{display:block;}
+  .reserve-item-bottom input.item-sum:focus{border-color:var(--accent);}
+  .form-success{
+    font-size:13px; color:var(--ok); background:var(--ok-bg);
+    padding:10px 14px; border-radius:7px; margin-top:14px; display:none;
+  }
+  .form-success.show{display:block;}
+
+  /* ===== Login screen ===== */
+  .app-hidden{display:none;}
+  .login-screen{
+    position:fixed; inset:0; background:var(--bg);
+    display:flex; align-items:center; justify-content:center;
+    padding:20px; z-index:200;
+  }
+  .login-box{
+    width:100%; max-width:380px;
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:32px 28px;
+  }
+  .login-brand{display:flex; align-items:baseline; gap:10px; margin-bottom:6px;}
+  .login-title{font-size:18px; font-weight:600; color:var(--ink);}
+  .login-sub{color:var(--ink-faint); font-size:13px; margin:0 0 22px;}
+  .login-btn{
+    width:100%; background:var(--accent); border:1px solid var(--accent); color:#1a1410;
+    font-family:var(--sans); font-size:14px; font-weight:700;
+    padding:11px 16px; border-radius:7px; cursor:pointer; margin-top:6px;
+    transition:all .15s ease;
+  }
+  .login-btn:hover{background:#f0b34f;}
+  .login-btn:disabled{opacity:0.5; cursor:not-allowed;}
+
+  /* ===== Stat strip ===== */
+  .stats{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:1px;
+    background:var(--line); border:1px solid var(--line); border-radius:9px;
+    overflow:hidden; margin-bottom:20px;
+  }
+  .stat{background:var(--panel); padding:14px 18px;}
+  .stat-label{font-size:11px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px;}
+  .stat-value{font-family:var(--mono); font-size:22px; font-weight:600; color:var(--ink); line-height:1;}
+  .stat-value.accent{color:var(--accent);}
+  .stat-value.warn{color:var(--wait);}
+  .stat-value.ok{color:var(--ok);}
+
+  /* ===== Table ===== */
+  .table-wrap{
+    background:var(--panel); border:1px solid var(--line); border-radius:9px;
+    overflow-x:auto;
+    overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;
+  }
+  table{width:100%; border-collapse:collapse; font-size:13.5px;}
+  thead th{
+    text-align:left; font-size:11px; font-weight:600; color:var(--ink-faint);
+    text-transform:uppercase; letter-spacing:0.05em;
+    padding:11px 16px; background:var(--panel-2);
+    border-bottom:1px solid var(--line);
+    position:sticky; top:0;
+    cursor:pointer; user-select:none;
+    white-space:nowrap;
+  }
+  thead th:hover{color:var(--ink-dim);}
+  thead th .arrow{opacity:0; margin-left:4px; font-size:10px;}
+  thead th.sorted .arrow{opacity:1; color:var(--accent);}
+  tbody td{
+    padding:10px 16px; border-bottom:1px solid var(--line-soft);
+    color:var(--ink-dim); vertical-align:middle;
+  }
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:var(--panel-2);}
+  td.code{font-family:var(--mono); font-size:12.5px; color:var(--accent); font-weight:500;}
+  td.name{color:var(--ink); max-width:420px;}
+  td.num{font-family:var(--mono); text-align:right; color:var(--ink);}
+  th.num{text-align:right;}
+  tr.section-row td{
+    background:var(--panel-2); color:var(--ink-faint);
+    font-size:11px; font-weight:600; text-transform:uppercase;
+    letter-spacing:0.06em; padding:8px 16px;
+  }
+  tr.zero-row td.num{color:var(--ink-faint);}
+  tr.low-row td.num.qty{color:var(--wait);}
+
+  .badge{
+    display:inline-flex; align-items:center; gap:5px;
+    font-size:12px; font-weight:600; padding:3px 9px; border-radius:5px;
+    white-space:nowrap;
+  }
+  .badge.new{background:var(--panel-2); color:var(--ink-dim);}
+  .badge.progress{background:var(--wait-bg); color:var(--wait);}
+  .badge.stocked{background:#162530; color:#5fa8d9;}
+  .badge.done{background:var(--ok-bg); color:var(--ok);}
+  .badge.other{background:var(--panel-2); color:var(--ink-dim);}
+  .badge::before{content:""; width:5px; height:5px; border-radius:50%; background:currentColor;}
+
+  /* ===== States ===== */
+  .state-box{
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:80px 20px; color:var(--ink-faint); gap:10px; text-align:center;
+  }
+  .state-box .big{font-size:14px; color:var(--ink-dim);}
+  .spinner{
+    width:22px; height:22px; border-radius:50%;
+    border:2px solid var(--line); border-top-color:var(--accent);
+    animation:spin 0.7s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .retry-btn{
+    margin-top:6px;
+    background:var(--accent-dim); border:1px solid var(--accent); color:var(--accent);
+    font-size:13px; font-weight:600; padding:7px 16px; border-radius:6px; cursor:pointer;
+  }
+
+  footer{
+    max-width:1280px; margin:0 auto; padding:14px 24px 32px;
+    color:var(--ink-faint); font-size:12px; font-family:var(--mono);
+  }
+
+  @media (max-width:720px){
+    .topbar-inner{flex-direction:column; align-items:flex-start; gap:10px;}
+    .stats{grid-template-columns:repeat(2,1fr);}
+    .tabs{gap:0;}
+    .tab-btn{margin-right:18px; font-size:13px;}
+    th, td{padding:9px 10px !important; white-space:nowrap;}
+    table{min-width:780px;}
+    td.name{max-width:none; white-space:normal;}
+  }
+</style>
+</head>
+<body>
+
+<div class="login-screen" id="loginScreen">
+  <div class="login-box">
+    <div class="login-brand">
+      <span class="brand-mark">QMT</span>
+      <span class="login-title">Склад и заказы</span>
+    </div>
+    <p class="login-sub">Войдите, чтобы открыть дашборд</p>
+
+    <div class="form-field">
+      <label>Имя</label>
+      <input type="text" id="loginName" placeholder="Например: Александр" autocomplete="username">
+    </div>
+    <div class="form-field">
+      <label>Пароль</label>
+      <input type="password" id="loginPass" placeholder="Пароль" autocomplete="current-password">
+    </div>
+
+    <div class="form-error" id="loginError"></div>
+
+    <button class="login-btn" id="loginBtn">Войти</button>
+  </div>
+</div>
+
+<div id="appRoot" class="app-hidden">
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="brand-mark">QMT</span>
+      <span class="brand-title">Склад и заказы</span>
+    </div>
+    <div class="status-cluster">
+      <span class="user-pill" id="userPill"></span>
+      <div class="sync-pill" id="syncPill">
+        <span class="sync-dot" id="syncDot"></span>
+        <span id="syncText">обновляется…</span>
+      </div>
+      <button class="refresh-btn" id="refreshBtn">↻ Обновить</button>
+      <button class="refresh-btn" id="logoutBtn">Выйти</button>
+    </div>
+  </div>
+  <div class="tabs">
+    <button class="tab-btn active" data-view="stock">Остатки <span class="count" id="stockCount">—</span></button>
+    <button class="tab-btn" data-view="orders">Заказы заводу <span class="count" id="ordersCount">—</span></button>
+    <button class="tab-btn" data-view="reserve">Резерв <span class="count" id="reserveCount">—</span></button>
+  </div>
+</div>
+
+<main>
+
+  <!-- ============ STOCK VIEW ============ -->
+  <section class="view active" id="view-stock">
+    <div class="stats" id="stockStats">
+      <div class="stat"><div class="stat-label">Позиций</div><div class="stat-value" id="stStatTotal">—</div></div>
+      <div class="stat"><div class="stat-label">Нулевой остаток</div><div class="stat-value warn" id="stStatZero">—</div></div>
+      <div class="stat"><div class="stat-label">Мало (&lt;10 шт)</div><div class="stat-value warn" id="stStatLow">—</div></div>
+      <div class="stat"><div class="stat-label">Суммарно, шт</div><div class="stat-value accent" id="stStatSum">—</div></div>
+    </div>
+
+    <div class="toolbar">
+      <div class="search-box"><input type="text" id="stockSearch" placeholder="Поиск по коду или наименованию…"></div>
+      <button class="filter-chip active" data-stockfilter="all">Все</button>
+      <button class="filter-chip" data-stockfilter="zero">Нулевые</button>
+      <button class="filter-chip" data-stockfilter="low">Мало (&lt;10)</button>
+      <div class="toolbar-spacer"></div>
+      <span class="row-count" id="stockRowCount"></span>
+    </div>
+
+    <div class="table-wrap">
+      <div id="stockTableHost">
+        <div class="state-box"><div class="spinner"></div><div class="big">Загружаем остатки…</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ORDERS VIEW ============ -->
+  <section class="view" id="view-orders">
+    <div class="stats" id="ordersStats">
+      <div class="stat"><div class="stat-label">Всего заказов</div><div class="stat-value" id="orStatTotal">—</div></div>
+      <div class="stat"><div class="stat-label">В процессе</div><div class="stat-value warn" id="orStatWait">—</div></div>
+      <div class="stat"><div class="stat-label">Реализовано</div><div class="stat-value ok" id="orStatDone">—</div></div>
+      <div class="stat"><div class="stat-label">Кол-во в процессе, шт</div><div class="stat-value accent" id="orStatQty">—</div></div>
+    </div>
+
+    <div class="toolbar">
+      <div class="search-box"><input type="text" id="ordersSearch" placeholder="Поиск по коду, имени, комментарию…"></div>
+      <button class="filter-chip active" data-orderfilter="all">Все</button>
+      <button class="filter-chip" data-orderfilter="new">Новый</button>
+      <button class="filter-chip" data-orderfilter="ordered">В заказе у завода</button>
+      <button class="filter-chip" data-orderfilter="invoiced">Выставлен счёт</button>
+      <button class="filter-chip" data-orderfilter="stocked">Посажено на склад</button>
+      <button class="filter-chip" data-orderfilter="done">Реализовано</button>
+      <div class="toolbar-spacer"></div>
+      <span class="row-count" id="ordersRowCount"></span>
+      <button class="new-order-btn" id="newOrderBtn">+ Новый заказ</button>
+    </div>
+
+    <div class="table-wrap">
+      <div id="ordersTableHost">
+        <div class="state-box"><div class="spinner"></div><div class="big">Загружаем заказы…</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ RESERVE VIEW ============ -->
+  <section class="view" id="view-reserve">
+    <div class="stats" id="reserveStats">
+      <div class="stat"><div class="stat-label">Всего записей</div><div class="stat-value" id="rsStatTotal">—</div></div>
+      <div class="stat"><div class="stat-label">С предоплатой</div><div class="stat-value ok" id="rsStatPaid">—</div></div>
+      <div class="stat"><div class="stat-label">Без предоплаты</div><div class="stat-value warn" id="rsStatUnpaid">—</div></div>
+      <div class="stat"><div class="stat-label">Сумма предоплат</div><div class="stat-value accent" id="rsStatSum">—</div></div>
+    </div>
+
+    <div class="toolbar">
+      <div class="search-box"><input type="text" id="reserveSearch" placeholder="Поиск по заказчику, модели, менеджеру…"></div>
+      <button class="filter-chip active" data-reservefilter="all">Все</button>
+      <button class="filter-chip" data-reservefilter="paid">С предоплатой</button>
+      <button class="filter-chip" data-reservefilter="unpaid">Без предоплаты</button>
+      <div class="toolbar-spacer"></div>
+      <span class="row-count" id="reserveRowCount"></span>
+      <button class="new-order-btn" id="newReserveBtn">+ Новый резерв</button>
+    </div>
+
+    <div class="table-wrap">
+      <div id="reserveTableHost">
+        <div class="state-box"><div class="spinner"></div><div class="big">Загружаем резерв…</div></div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-box modal-box-wide">
+    <div class="modal-header">
+      <span class="modal-title">Новый заказ заводу</span>
+      <button class="modal-close" id="modalClose">×</button>
+    </div>
+
+    <div class="form-field">
+      <label>От кого <span class="required">*</span></label>
+      <input type="text" id="fldFrom" placeholder="Например: Александр">
+    </div>
+
+    <div class="form-field">
+      <label>Позиции заказа <span class="required">*</span></label>
+      <div id="itemsList"></div>
+      <button class="add-item-btn" id="addItemBtn">+ Добавить позицию</button>
+    </div>
+
+    <div class="form-field">
+      <label>Комментарий</label>
+      <textarea id="fldComment" rows="2" placeholder="Необязательно, общий для всех позиций"></textarea>
+    </div>
+
+    <div class="form-error" id="formError"></div>
+    <div class="form-success" id="formSuccess">Заказ добавлен! Обновляю данные…</div>
+
+    <div class="modal-actions">
+      <button class="modal-btn cancel" id="modalCancel">Отмена</button>
+      <button class="modal-btn submit" id="modalSubmit">Добавить заказ</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="reserveModalOverlay">
+  <div class="modal-box modal-box-wide">
+    <div class="modal-header">
+      <span class="modal-title">Новый резерв</span>
+      <button class="modal-close" id="reserveModalClose">×</button>
+    </div>
+
+    <div class="form-field">
+      <label>Заказчик <span class="required">*</span></label>
+      <input type="text" id="rFldCustomer" placeholder="Например: Умит-92">
+    </div>
+
+    <div class="form-field">
+      <label>Дата резерва</label>
+      <input type="text" id="rFldDate" placeholder="дд.мм.гггг">
+    </div>
+
+    <div class="form-field">
+      <label>Позиции резерва <span class="required">*</span></label>
+      <div id="reserveItemsList"></div>
+      <button class="add-item-btn" id="addReserveItemBtn">+ Добавить позицию</button>
+    </div>
+
+    <div class="form-error" id="reserveFormError"></div>
+    <div class="form-success" id="reserveFormSuccess">Резерв добавлен! Обновляю данные…</div>
+
+    <div class="modal-actions">
+      <button class="modal-btn cancel" id="reserveModalCancel">Отмена</button>
+      <button class="modal-btn submit" id="reserveModalSubmit">Добавить резерв</button>
+    </div>
+  </div>
+</div>
+
+<footer>
+  Данные подтягиваются напрямую из Google Sheets (опубликованные листы) · автообновление каждые 3 минуты · последнее обновление: <span id="footTime">—</span>
+</footer>
+
+</div><!-- /#appRoot -->
+
+<script>
+(function(){
+  "use strict";
+
+  const FILE_ID = "1c0jk0ntxmZxKY80BSFVkoV-9ochfBRlPzlLpaLQY8TU";
+  const GID_ORDERS = "1951926348";
+  const GID_STOCK  = "1284429257";
+  const GID_RESERVE = "2127529501";
+  const GID_USERS = "203819478";
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzmOjTtKH0GggTtBDC6KJSn05GvZUeMOogWqLroZnO4Ih0NcIsKr7SPAM05ybTExL9w/exec";
+
+  function csvUrl(gid){
+    return `https://docs.google.com/spreadsheets/d/${FILE_ID}/export?format=csv&gid=${gid}&_=${Date.now()}`;
+  }
+
+  // ---------- CSV parser (handles quoted fields, commas, newlines) ----------
+  function parseCSV(text){
+    const rows = [];
+    let row = [], field = "", inQuotes = false;
+    for(let i=0; i<text.length; i++){
+      const c = text[i], next = text[i+1];
+      if(inQuotes){
+        if(c === '"' && next === '"'){ field += '"'; i++; }
+        else if(c === '"'){ inQuotes = false; }
+        else { field += c; }
+      } else {
+        if(c === '"'){ inQuotes = true; }
+        else if(c === ','){ row.push(field); field = ""; }
+        else if(c === '\r'){ /* skip */ }
+        else if(c === '\n'){ row.push(field); rows.push(row); row = []; field = ""; }
+        else { field += c; }
+      }
+    }
+    if(field.length || row.length){ row.push(field); rows.push(row); }
+    return rows.filter(r => r.length > 1 || (r[0] && r[0].trim() !== ""));
+  }
+
+  function esc(s){
+    return String(s ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+  }
+
+  function fmtNum(n){
+    if(n === null || n === undefined || n === "") return "";
+    const num = Number(String(n).replace(/\s/g,"").replace(",","."));
+    if(Number.isNaN(num)) return esc(n);
+    return num.toLocaleString("ru-RU");
+  }
+
+  // ---------- State ----------
+  let stockRows = [];   // {code, name, qty, year, box, note, isSection}
+  let orderRows = [];   // {date, from, code, qty, status, comment, closed}
+  let reserveRows = []; // {customer, model, qty, date, prepaid, sum, manager}
+  let stockSort = {key:null, dir:1};
+  let orderSort = {key:"date", dir:-1};
+  let reserveSort = {key:"date", dir:-1};
+  let stockFilter = "all";
+  let orderFilter = "all";
+  let reserveFilter = "all";
+
+  // ---------- Fetch + transform: STOCK ----------
+  function buildStock(rows){
+    // header is rows[0]; data from rows[1]
+    const out = [];
+    for(let i=1; i<rows.length; i++){
+      const r = rows[i];
+      const code = (r[0]||"").trim();
+      const name = (r[1]||"").trim();
+      const qtyRaw = (r[3]||"").trim();
+      const year = (r[4]||"").trim();
+      const box = (r[5]||"").trim();
+      const note = (r[6]||"").trim();
+      if(!code && !name) continue;
+      const sectionText = (code + " " + name).toLowerCase();
+      if(sectionText.includes("итого") || sectionText.includes("всего")) continue;
+      if(!code && name){
+        out.push({isSection:true, name});
+        continue;
+      }
+      const qtyNum = qtyRaw === "" ? null : Number(qtyRaw.replace(/\s/g,"").replace(",","."));
+      out.push({
+        isSection:false,
+        code, name,
+        qty: Number.isNaN(qtyNum) ? null : qtyNum,
+        qtyRaw,
+        year, box, note
+      });
+    }
+    return out;
+  }
+
+  // ---------- Fetch + transform: ORDERS ----------
+  function buildOrders(rows){
+    const out = [];
+    for(let i=1; i<rows.length; i++){
+      const r = rows[i];
+      const date = (r[0]||"").trim();
+      const from = (r[1]||"").trim();
+      const code = (r[2]||"").trim();
+      const qty = (r[3]||"").trim();
+      const status = (r[4]||"").trim();
+      const comment = (r[5]||"").trim();
+      const closed = (r[6]||"").trim();
+      if(!date && !from && !code) continue;
+      const orderRowText = (from + " " + code).toLowerCase();
+      if(orderRowText.includes("итого") || orderRowText.includes("всего")) continue;
+      out.push({date, from, code, qty, status, comment, closed});
+    }
+    return out;
+  }
+
+  function statusClass(status){
+    const s = (status||"").toLowerCase();
+    if(s.includes("реализ")) return "done";
+    if(s.includes("посажен") || s.includes("на склад")) return "stocked";
+    if(s.includes("счёт") || s.includes("счет")) return "progress";
+    if(s.includes("в заказе") || s.includes("заказе у завода") || s.includes("заказан")) return "progress";
+    if(s.includes("нов")) return "new";
+    return "other";
+  }
+
+  function statusFilterKey(status){
+    const s = (status||"").toLowerCase();
+    if(s.includes("реализ")) return "done";
+    if(s.includes("посажен") || s.includes("на склад")) return "stocked";
+    if(s.includes("счёт") || s.includes("счет")) return "invoiced";
+    if(s.includes("в заказе") || s.includes("заказе у завода")) return "ordered";
+    if(s.includes("нов")) return "new";
+    return "other";
+  }
+
+  // ---------- Fetch + transform: RESERVE ----------
+  function buildReserve(rows){
+    const out = [];
+    for(let i=1; i<rows.length; i++){
+      const r = rows[i];
+      const customer = (r[0]||"").trim();
+      const model = (r[1]||"").trim();
+      const qty = (r[2]||"").trim();
+      const date = (r[3]||"").trim();
+      const prepaid = (r[4]||"").trim();
+      const sum = (r[5]||"").trim();
+      const manager = (r[6]||"").trim();
+      if(!customer && !model) continue;
+      // skip summary/total rows like "Итого", "Всего", etc.
+      const rowText = (customer + " " + model).toLowerCase();
+      if(rowText.includes("итого") || rowText.includes("всего")) continue;
+      out.push({customer, model, qty, date, prepaid, sum, manager});
+    }
+    return out;
+  }
+
+  function isPrepaid(val){
+    const v = (val||"").toLowerCase().trim();
+    return v === "да" || v === "да " || v.startsWith("да");
+  }
+
+
+  function renderStock(){
+    let rows = stockRows.filter(r => !r.isSection);
+
+    if(stockFilter === "zero") rows = rows.filter(r => r.qty === 0 || r.qty === null);
+    if(stockFilter === "low")  rows = rows.filter(r => r.qty !== null && r.qty > 0 && r.qty < 10);
+
+    const term = (document.getElementById("stockSearch").value||"").trim().toLowerCase();
+    if(term) rows = rows.filter(r => r.code.toLowerCase().includes(term) || r.name.toLowerCase().includes(term));
+
+    if(stockSort.key){
+      rows = rows.slice().sort((a,b)=>{
+        let av, bv;
+        if(stockSort.key === "qty"){ av = a.qty ?? -1; bv = b.qty ?? -1; }
+        else { av = (a[stockSort.key]||"").toLowerCase(); bv = (b[stockSort.key]||"").toLowerCase(); }
+        if(av < bv) return -1 * stockSort.dir;
+        if(av > bv) return 1 * stockSort.dir;
+        return 0;
+      });
+    }
+
+    document.getElementById("stockRowCount").textContent = `${rows.length} из ${stockRows.filter(r=>!r.isSection).length}`;
+
+    const host = document.getElementById("stockTableHost");
+    if(rows.length === 0){
+      host.innerHTML = `<div class="state-box"><div class="big">Ничего не найдено</div><div>Попробуй изменить фильтр или поиск</div></div>`;
+      return;
+    }
+
+    const arrow = (key) => stockSort.key===key ? (stockSort.dir===1?"▲":"▼") : "";
+    const sortedClass = (key) => stockSort.key===key ? "sorted" : "";
+
+    let html = `<table><thead><tr>
+      <th data-sortkey="code" class="${sortedClass('code')}">Код <span class="arrow">${arrow('code')}</span></th>
+      <th data-sortkey="name" class="${sortedClass('name')}">Наименование <span class="arrow">${arrow('name')}</span></th>
+      <th data-sortkey="qty" class="num ${sortedClass('qty')}">Кол-во, шт <span class="arrow">${arrow('qty')}</span></th>
+      <th data-sortkey="year" class="${sortedClass('year')}">Год</th>
+      <th>В коробке</th>
+      <th>Если нет — будут</th>
+    </tr></thead><tbody>`;
+
+    for(const r of rows){
+      const rowClass = (r.qty===0 || r.qty===null) ? "zero-row" : (r.qty<10 ? "low-row" : "");
+      html += `<tr class="${rowClass}">
+        <td class="code">${esc(r.code)}</td>
+        <td class="name">${esc(r.name)}</td>
+        <td class="num qty">${r.qty===null ? "—" : fmtNum(r.qty)}</td>
+        <td>${esc(r.year)}</td>
+        <td>${esc(r.box)}</td>
+        <td>${esc(r.note)}</td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+    host.innerHTML = html;
+
+    host.querySelectorAll("th[data-sortkey]").forEach(th=>{
+      th.addEventListener("click", ()=>{
+        const key = th.getAttribute("data-sortkey");
+        if(stockSort.key === key) stockSort.dir *= -1;
+        else { stockSort.key = key; stockSort.dir = 1; }
+        renderStock();
+      });
+    });
+  }
+
+  function renderStockStats(){
+    const data = stockRows.filter(r => !r.isSection);
+    const total = data.length;
+    const zero = data.filter(r => r.qty === 0 || r.qty === null).length;
+    const low = data.filter(r => r.qty !== null && r.qty > 0 && r.qty < 10).length;
+    const sum = data.reduce((acc,r)=> acc + (r.qty || 0), 0);
+    document.getElementById("stStatTotal").textContent = total;
+    document.getElementById("stStatZero").textContent = zero;
+    document.getElementById("stStatLow").textContent = low;
+    document.getElementById("stStatSum").textContent = fmtNum(sum);
+    document.getElementById("stockCount").textContent = total;
+  }
+
+  // ---------- Render: ORDERS ----------
+  function renderOrders(){
+    let rows = orderRows.slice();
+
+    if(orderFilter !== "all") rows = rows.filter(r => statusFilterKey(r.status) === orderFilter);
+
+    const term = (document.getElementById("ordersSearch").value||"").trim().toLowerCase();
+    if(term) rows = rows.filter(r =>
+      r.code.toLowerCase().includes(term) ||
+      r.from.toLowerCase().includes(term) ||
+      r.comment.toLowerCase().includes(term)
+    );
+
+    if(orderSort.key){
+      rows.sort((a,b)=>{
+        let av = (a[orderSort.key]||"").toString().toLowerCase();
+        let bv = (b[orderSort.key]||"").toString().toLowerCase();
+        if(orderSort.key === "date" || orderSort.key === "closed"){
+          av = toSortableDate(a[orderSort.key]); bv = toSortableDate(b[orderSort.key]);
+        }
+        if(av < bv) return -1 * orderSort.dir;
+        if(av > bv) return 1 * orderSort.dir;
+        return 0;
+      });
+    }
+
+    document.getElementById("ordersRowCount").textContent = `${rows.length} из ${orderRows.length}`;
+
+    const host = document.getElementById("ordersTableHost");
+    if(rows.length === 0){
+      host.innerHTML = `<div class="state-box"><div class="big">Ничего не найдено</div><div>Попробуй изменить фильтр или поиск</div></div>`;
+      return;
+    }
+
+    const arrow = (key) => orderSort.key===key ? (orderSort.dir===1?"▲":"▼") : "";
+    const sortedClass = (key) => orderSort.key===key ? "sorted" : "";
+
+    let html = `<table><thead><tr>
+      <th data-sortkey="date" class="${sortedClass('date')}">Дата <span class="arrow">${arrow('date')}</span></th>
+      <th data-sortkey="from" class="${sortedClass('from')}">От кого <span class="arrow">${arrow('from')}</span></th>
+      <th data-sortkey="code" class="${sortedClass('code')}">Код <span class="arrow">${arrow('code')}</span></th>
+      <th class="num">Кол-во</th>
+      <th data-sortkey="status" class="${sortedClass('status')}">Статус <span class="arrow">${arrow('status')}</span></th>
+      <th>Комментарий</th>
+    </tr></thead><tbody>`;
+
+    for(const r of rows){
+      const cls = statusClass(r.status);
+      html += `<tr>
+        <td>${esc(r.date)}</td>
+        <td>${esc(r.from)}</td>
+        <td class="code">${esc(r.code)}</td>
+        <td class="num">${esc(r.qty)}</td>
+        <td><span class="badge ${cls}">${esc(r.status)}</span></td>
+        <td>${esc(r.comment)}</td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+    host.innerHTML = html;
+
+    host.querySelectorAll("th[data-sortkey]").forEach(th=>{
+      th.addEventListener("click", ()=>{
+        const key = th.getAttribute("data-sortkey");
+        if(orderSort.key === key) orderSort.dir *= -1;
+        else { orderSort.key = key; orderSort.dir = 1; }
+        renderOrders();
+      });
+    });
+  }
+
+  function toSortableDate(d){
+    if(!d) return "";
+    const m = d.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/);
+    if(!m) return d;
+    const [_, dd, mm, yy] = m;
+    const yyyy = yy.length===2 ? "20"+yy : yy;
+    return `${yyyy}-${mm.padStart(2,"0")}-${dd.padStart(2,"0")}`;
+  }
+
+  function renderOrdersStats(){
+    const total = orderRows.length;
+    const inProgress = orderRows.filter(r => {
+      const c = statusClass(r.status);
+      return c === "new" || c === "progress" || c === "stocked";
+    }).length;
+    const done = orderRows.filter(r => statusClass(r.status)==="done").length;
+    const qtySum = orderRows.filter(r => {
+      const c = statusClass(r.status);
+      return c === "new" || c === "progress" || c === "stocked";
+    }).reduce((acc,r)=> acc + (Number(String(r.qty).replace(/\s/g,"")) || 0), 0);
+    document.getElementById("orStatTotal").textContent = total;
+    document.getElementById("orStatWait").textContent = inProgress;
+    document.getElementById("orStatDone").textContent = done;
+    document.getElementById("orStatQty").textContent = fmtNum(qtySum);
+    document.getElementById("ordersCount").textContent = total;
+  }
+
+  // ---------- Render: RESERVE ----------
+  function renderReserve(){
+    let rows = reserveRows.slice();
+
+    if(reserveFilter === "paid") rows = rows.filter(r => isPrepaid(r.prepaid));
+    if(reserveFilter === "unpaid") rows = rows.filter(r => !isPrepaid(r.prepaid));
+
+    const term = (document.getElementById("reserveSearch").value||"").trim().toLowerCase();
+    if(term) rows = rows.filter(r =>
+      r.customer.toLowerCase().includes(term) ||
+      r.model.toLowerCase().includes(term) ||
+      r.manager.toLowerCase().includes(term)
+    );
+
+    if(reserveSort.key){
+      rows.sort((a,b)=>{
+        let av = (a[reserveSort.key]||"").toString().toLowerCase();
+        let bv = (b[reserveSort.key]||"").toString().toLowerCase();
+        if(reserveSort.key === "date"){
+          av = toSortableDate(a.date); bv = toSortableDate(b.date);
+        }
+        if(reserveSort.key === "qty" || reserveSort.key === "sum"){
+          av = Number(String(a[reserveSort.key]).replace(/\s/g,"").replace(",",".")) || 0;
+          bv = Number(String(b[reserveSort.key]).replace(/\s/g,"").replace(",",".")) || 0;
+        }
+        if(av < bv) return -1 * reserveSort.dir;
+        if(av > bv) return 1 * reserveSort.dir;
+        return 0;
+      });
+    }
+
+    document.getElementById("reserveRowCount").textContent = `${rows.length} из ${reserveRows.length}`;
+
+    const host = document.getElementById("reserveTableHost");
+    if(rows.length === 0){
+      host.innerHTML = `<div class="state-box"><div class="big">Ничего не найдено</div><div>Попробуй изменить фильтр или поиск</div></div>`;
+      return;
+    }
+
+    const arrow = (key) => reserveSort.key===key ? (reserveSort.dir===1?"▲":"▼") : "";
+    const sortedClass = (key) => reserveSort.key===key ? "sorted" : "";
+
+    let html = `<table><thead><tr>
+      <th data-sortkey="customer" class="${sortedClass('customer')}">Заказчик <span class="arrow">${arrow('customer')}</span></th>
+      <th data-sortkey="model" class="${sortedClass('model')}">Модель счётчика <span class="arrow">${arrow('model')}</span></th>
+      <th data-sortkey="qty" class="num ${sortedClass('qty')}">Кол-во <span class="arrow">${arrow('qty')}</span></th>
+      <th data-sortkey="date" class="${sortedClass('date')}">Дата резерва <span class="arrow">${arrow('date')}</span></th>
+      <th data-sortkey="prepaid" class="${sortedClass('prepaid')}">Предоплата <span class="arrow">${arrow('prepaid')}</span></th>
+      <th data-sortkey="sum" class="num ${sortedClass('sum')}">Сумма предоплаты <span class="arrow">${arrow('sum')}</span></th>
+      <th data-sortkey="manager" class="${sortedClass('manager')}">Ответственный менеджер <span class="arrow">${arrow('manager')}</span></th>
+    </tr></thead><tbody>`;
+
+    for(const r of rows){
+      const paid = isPrepaid(r.prepaid);
+      html += `<tr>
+        <td>${esc(r.customer)}</td>
+        <td class="name">${esc(r.model)}</td>
+        <td class="num">${esc(r.qty)}</td>
+        <td>${esc(r.date)}</td>
+        <td><span class="badge ${paid ? 'done' : 'new'}">${esc(r.prepaid || (paid ? "Да" : "Нет"))}</span></td>
+        <td class="num">${r.sum ? fmtNum(r.sum) : "—"}</td>
+        <td>${esc(r.manager)}</td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+    host.innerHTML = html;
+
+    host.querySelectorAll("th[data-sortkey]").forEach(th=>{
+      th.addEventListener("click", ()=>{
+        const key = th.getAttribute("data-sortkey");
+        if(reserveSort.key === key) reserveSort.dir *= -1;
+        else { reserveSort.key = key; reserveSort.dir = 1; }
+        renderReserve();
+      });
+    });
+  }
+
+  function renderReserveStats(){
+    const total = reserveRows.length;
+    const paid = reserveRows.filter(r => isPrepaid(r.prepaid)).length;
+    const unpaid = total - paid;
+    const sum = reserveRows.reduce((acc,r)=> acc + (Number(String(r.sum).replace(/\s/g,"").replace(",",".")) || 0), 0);
+    document.getElementById("rsStatTotal").textContent = total;
+    document.getElementById("rsStatPaid").textContent = paid;
+    document.getElementById("rsStatUnpaid").textContent = unpaid;
+    document.getElementById("rsStatSum").textContent = fmtNum(sum);
+    document.getElementById("reserveCount").textContent = total;
+  }
+
+  // ---------- Sync ----------
+  let syncing = false;
+  function setSyncState(state, msg){
+    const dot = document.getElementById("syncDot");
+    const text = document.getElementById("syncText");
+    dot.classList.remove("spin","err");
+    if(state === "loading"){ dot.classList.add("spin"); text.textContent = msg || "обновляется…"; }
+    else if(state === "error"){ dot.classList.add("err"); text.textContent = msg || "ошибка обновления"; }
+    else { text.textContent = msg || "данные свежие"; }
+  }
+
+  async function fetchSheet(gid){
+    const res = await fetch(csvUrl(gid), {cache:"no-store"});
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const buf = await res.arrayBuffer();
+    const text = new TextDecoder("utf-8").decode(buf);
+    if(text.trim().startsWith("<")) throw new Error("Таблица недоступна по ссылке — проверь доступ «у кого есть ссылка»");
+    return parseCSV(text);
+  }
+
+  async function syncAll(isManual){
+    if(syncing) return;
+    syncing = true;
+    setSyncState("loading", isManual ? "обновляю…" : "обновляется…");
+    try{
+      const [stockRaw, orderRaw, reserveRaw] = await Promise.all([
+        fetchSheet(GID_STOCK),
+        fetchSheet(GID_ORDERS),
+        fetchSheet(GID_RESERVE)
+      ]);
+      stockRows = buildStock(stockRaw);
+      orderRows = buildOrders(orderRaw);
+      reserveRows = buildReserve(reserveRaw);
+      renderStockStats(); renderStock();
+      renderOrdersStats(); renderOrders();
+      renderReserveStats(); renderReserve();
+      const now = new Date();
+      document.getElementById("footTime").textContent = now.toLocaleTimeString("ru-RU");
+      setSyncState("ok", "данные свежие");
+    }catch(err){
+      console.error(err);
+      setSyncState("error", "ошибка обновления");
+      if(stockRows.length === 0){
+        document.getElementById("stockTableHost").innerHTML =
+          `<div class="state-box"><div class="big">Не удалось загрузить остатки</div><div>${esc(err.message)}</div><button class="retry-btn" id="retryStock">Повторить</button></div>`;
+        document.getElementById("retryStock")?.addEventListener("click", ()=>syncAll(true));
+      }
+      if(orderRows.length === 0){
+        document.getElementById("ordersTableHost").innerHTML =
+          `<div class="state-box"><div class="big">Не удалось загрузить заказы</div><div>${esc(err.message)}</div><button class="retry-btn" id="retryOrders">Повторить</button></div>`;
+        document.getElementById("retryOrders")?.addEventListener("click", ()=>syncAll(true));
+      }
+      if(reserveRows.length === 0){
+        document.getElementById("reserveTableHost").innerHTML =
+          `<div class="state-box"><div class="big">Не удалось загрузить резерв</div><div>${esc(err.message)}</div><button class="retry-btn" id="retryReserve">Повторить</button></div>`;
+        document.getElementById("retryReserve")?.addEventListener("click", ()=>syncAll(true));
+      }
+    }finally{
+      syncing = false;
+    }
+  }
+
+  // ---------- Wiring ----------
+  document.querySelectorAll(".tab-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
+      document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById("view-" + btn.dataset.view).classList.add("active");
+    });
+  });
+
+  document.getElementById("refreshBtn").addEventListener("click", ()=>syncAll(true));
+
+  document.getElementById("stockSearch").addEventListener("input", renderStock);
+  document.getElementById("ordersSearch").addEventListener("input", renderOrders);
+  document.getElementById("reserveSearch").addEventListener("input", renderReserve);
+
+  document.querySelectorAll("[data-stockfilter]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      document.querySelectorAll("[data-stockfilter]").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      stockFilter = btn.dataset.stockfilter;
+      renderStock();
+    });
+  });
+
+  document.querySelectorAll("[data-orderfilter]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      document.querySelectorAll("[data-orderfilter]").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      orderFilter = btn.dataset.orderfilter;
+      renderOrders();
+    });
+  });
+
+  document.querySelectorAll("[data-reservefilter]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      document.querySelectorAll("[data-reservefilter]").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      reserveFilter = btn.dataset.reservefilter;
+      renderReserve();
+    });
+  });
+
+  // ---------- New order modal ----------
+  const modalOverlay = document.getElementById("modalOverlay");
+  const fldFrom = document.getElementById("fldFrom");
+  const fldComment = document.getElementById("fldComment");
+  const itemsList = document.getElementById("itemsList");
+  const addItemBtn = document.getElementById("addItemBtn");
+  const formError = document.getElementById("formError");
+  const formSuccess = document.getElementById("formSuccess");
+  const modalSubmit = document.getElementById("modalSubmit");
+
+  let itemRowId = 0;
+
+  function addItemRow(){
+    itemRowId++;
+    const id = "item_" + itemRowId;
+    const row = document.createElement("div");
+    row.className = "item-row";
+    row.dataset.rowId = id;
+    row.innerHTML = `
+      <input type="text" class="item-code" placeholder="Код">
+      <input type="text" class="item-qty" placeholder="Кол-во">
+      <button type="button" class="item-remove" title="Удалить позицию">×</button>
+    `;
+    itemsList.appendChild(row);
+    row.querySelector(".item-remove").addEventListener("click", ()=>{
+      row.remove();
+      updateRemoveButtons();
+    });
+    updateRemoveButtons();
+    return row;
+  }
+
+  function updateRemoveButtons(){
+    const rows = itemsList.querySelectorAll(".item-row");
+    rows.forEach(r => {
+      r.querySelector(".item-remove").disabled = rows.length === 1;
+    });
+  }
+
+  addItemBtn.addEventListener("click", ()=>{
+    addItemRow();
+    const rows = itemsList.querySelectorAll(".item-row");
+    rows[rows.length-1].querySelector(".item-code").focus();
+  });
+
+  function openModal(){
+    modalOverlay.classList.add("open");
+    fldFrom.value = currentUser ? currentUser.name : "";
+    fldComment.value = "";
+    itemsList.innerHTML = "";
+    addItemRow();
+    formError.classList.remove("show"); formError.textContent = "";
+    formSuccess.classList.remove("show");
+    modalSubmit.disabled = false;
+    modalSubmit.textContent = "Добавить заказ";
+    setTimeout(()=>{
+      const firstCode = itemsList.querySelector(".item-code");
+      if(firstCode) firstCode.focus();
+    }, 50);
+  }
+
+  function closeModal(){
+    modalOverlay.classList.remove("open");
+  }
+
+  document.getElementById("newOrderBtn").addEventListener("click", openModal);
+  document.getElementById("modalClose").addEventListener("click", closeModal);
+  document.getElementById("modalCancel").addEventListener("click", closeModal);
+  modalOverlay.addEventListener("click", (e)=>{ if(e.target === modalOverlay) closeModal(); });
+  document.addEventListener("keydown", (e)=>{ if(e.key === "Escape" && modalOverlay.classList.contains("open")) closeModal(); });
+
+  function collectItems(){
+    const rows = itemsList.querySelectorAll(".item-row");
+    const items = [];
+    for(const row of rows){
+      const code = row.querySelector(".item-code").value.trim();
+      const qty = row.querySelector(".item-qty").value.trim();
+      if(!code && !qty) continue; // skip fully empty rows
+      items.push({code, qty});
+    }
+    return items;
+  }
+
+  async function submitOrder(){
+    const from = fldFrom.value.trim();
+    const comment = fldComment.value.trim();
+    const items = collectItems();
+
+    formError.classList.remove("show");
+
+    if(!from){
+      formError.textContent = "Заполните поле «От кого»";
+      formError.classList.add("show");
+      return;
+    }
+    if(items.length === 0){
+      formError.textContent = "Добавьте хотя бы одну позицию";
+      formError.classList.add("show");
+      return;
+    }
+    for(const it of items){
+      if(!it.code || !it.qty){
+        formError.textContent = "Заполните код/наименование и количество для каждой позиции";
+        formError.classList.add("show");
+        return;
+      }
+      if(!/^\d+([.,]\d+)?$/.test(it.qty)){
+        formError.textContent = `Количество для «${it.code}» должно быть числом`;
+        formError.classList.add("show");
+        return;
+      }
+    }
+
+    modalSubmit.disabled = true;
+    modalSubmit.textContent = "Добавляю…";
+
+    try{
+      const res = await fetch(APPS_SCRIPT_URL, {
+        method: "POST",
+        headers: {"Content-Type": "text/plain;charset=utf-8"},
+        body: JSON.stringify({from, comment, items})
+      });
+      const text = await res.text();
+      let data;
+      try{ data = JSON.parse(text); }
+      catch{ throw new Error("Сервер вернул непонятный ответ: " + text.slice(0,120)); }
+      if(!data.ok) throw new Error(data.error || "Неизвестная ошибка");
+
+      formSuccess.textContent = `Добавлено позиций: ${items.length}. Обновляю данные…`;
+      formSuccess.classList.add("show");
+      modalSubmit.textContent = "Добавлено ✓";
+      setTimeout(()=>{
+        closeModal();
+        syncAll(true);
+      }, 900);
+    }catch(err){
+      formError.textContent = "Не удалось добавить заказ: " + err.message;
+      formError.classList.add("show");
+      modalSubmit.disabled = false;
+      modalSubmit.textContent = "Добавить заказ";
+    }
+  }
+
+  modalSubmit.addEventListener("click", submitOrder);
+
+  // ---------- New reserve modal ----------
+  const reserveModalOverlay = document.getElementById("reserveModalOverlay");
+  const rFldCustomer = document.getElementById("rFldCustomer");
+  const rFldDate = document.getElementById("rFldDate");
+  const reserveItemsList = document.getElementById("reserveItemsList");
+  const addReserveItemBtn = document.getElementById("addReserveItemBtn");
+  const reserveFormError = document.getElementById("reserveFormError");
+  const reserveFormSuccess = document.getElementById("reserveFormSuccess");
+  const reserveModalSubmit = document.getElementById("reserveModalSubmit");
+
+  let reserveItemRowId = 0;
+
+  function todayStr(){
+    const d = new Date();
+    const dd = String(d.getDate()).padStart(2,"0");
+    const mm = String(d.getMonth()+1).padStart(2,"0");
+    return `${dd}.${mm}.${d.getFullYear()}`;
+  }
+
+  function addReserveItemRow(){
+    reserveItemRowId++;
+    const id = "ritem_" + reserveItemRowId;
+    const row = document.createElement("div");
+    row.className = "reserve-item-row";
+    row.dataset.rowId = id;
+    row.innerHTML = `
+      <div class="reserve-item-top">
+        <input type="text" class="item-code" placeholder="Модель счётчика">
+        <input type="text" class="item-qty" placeholder="Кол-во">
+        <button type="button" class="item-remove" title="Удалить позицию">×</button>
+      </div>
+      <div class="reserve-item-bottom">
+        <label class="reserve-checkbox-label">
+          <input type="checkbox" class="item-prepaid">
+          С предоплатой
+        </label>
+        <input type="text" class="item-sum" placeholder="Сумма предоплаты">
+      </div>
+    `;
+    reserveItemsList.appendChild(row);
+
+    const removeBtn = row.querySelector(".item-remove");
+    removeBtn.addEventListener("click", ()=>{
+      row.remove();
+      updateReserveRemoveButtons();
+    });
+
+    const checkbox = row.querySelector(".item-prepaid");
+    const sumInput = row.querySelector(".item-sum");
+    checkbox.addEventListener("change", ()=>{
+      sumInput.classList.toggle("visible", checkbox.checked);
+      if(!checkbox.checked) sumInput.value = "";
+    });
+
+    updateReserveRemoveButtons();
+    return row;
+  }
+
+  function updateReserveRemoveButtons(){
+    const rows = reserveItemsList.querySelectorAll(".reserve-item-row");
+    rows.forEach(r => {
+      r.querySelector(".item-remove").disabled = rows.length === 1;
+    });
+  }
+
+  addReserveItemBtn.addEventListener("click", ()=>{
+    addReserveItemRow();
+    const rows = reserveItemsList.querySelectorAll(".reserve-item-row");
+    rows[rows.length-1].querySelector(".item-code").focus();
+  });
+
+  function openReserveModal(){
+    reserveModalOverlay.classList.add("open");
+    rFldCustomer.value = "";
+    rFldDate.value = todayStr();
+    reserveItemsList.innerHTML = "";
+    addReserveItemRow();
+    reserveFormError.classList.remove("show"); reserveFormError.textContent = "";
+    reserveFormSuccess.classList.remove("show");
+    reserveModalSubmit.disabled = false;
+    reserveModalSubmit.textContent = "Добавить резерв";
+    setTimeout(()=>rFldCustomer.focus(), 50);
+  }
+
+  function closeReserveModal(){
+    reserveModalOverlay.classList.remove("open");
+  }
+
+  document.getElementById("newReserveBtn").addEventListener("click", openReserveModal);
+  document.getElementById("reserveModalClose").addEventListener("click", closeReserveModal);
+  document.getElementById("reserveModalCancel").addEventListener("click", closeReserveModal);
+  reserveModalOverlay.addEventListener("click", (e)=>{ if(e.target === reserveModalOverlay) closeReserveModal(); });
+  document.addEventListener("keydown", (e)=>{ if(e.key === "Escape" && reserveModalOverlay.classList.contains("open")) closeReserveModal(); });
+
+  function collectReserveItems(){
+    const rows = reserveItemsList.querySelectorAll(".reserve-item-row");
+    const items = [];
+    for(const row of rows){
+      const code = row.querySelector(".item-code").value.trim();
+      const qty = row.querySelector(".item-qty").value.trim();
+      const prepaid = row.querySelector(".item-prepaid").checked;
+      const sum = row.querySelector(".item-sum").value.trim();
+      if(!code && !qty) continue;
+      items.push({code, qty, prepaid, sum});
+    }
+    return items;
+  }
+
+  async function submitReserve(){
+    const customer = rFldCustomer.value.trim();
+    const date = rFldDate.value.trim();
+    const items = collectReserveItems();
+
+    reserveFormError.classList.remove("show");
+
+    if(!customer){
+      reserveFormError.textContent = "Заполните поле «Заказчик»";
+      reserveFormError.classList.add("show");
+      return;
+    }
+    if(items.length === 0){
+      reserveFormError.textContent = "Добавьте хотя бы одну позицию";
+      reserveFormError.classList.add("show");
+      return;
+    }
+    for(const it of items){
+      if(!it.code || !it.qty){
+        reserveFormError.textContent = "Заполните модель и количество для каждой позиции";
+        reserveFormError.classList.add("show");
+        return;
+      }
+      if(!/^\d+([.,]\d+)?$/.test(it.qty)){
+        reserveFormError.textContent = `Количество для «${it.code}» должно быть числом`;
+        reserveFormError.classList.add("show");
+        return;
+      }
+      if(it.prepaid && it.sum && !/^\d+([.,]\d+)?$/.test(it.sum)){
+        reserveFormError.textContent = `Сумма предоплаты для «${it.code}» должна быть числом`;
+        reserveFormError.classList.add("show");
+        return;
+      }
+    }
+
+    reserveModalSubmit.disabled = true;
+    reserveModalSubmit.textContent = "Добавляю…";
+
+    try{
+      const res = await fetch(APPS_SCRIPT_URL, {
+        method: "POST",
+        headers: {"Content-Type": "text/plain;charset=utf-8"},
+        body: JSON.stringify({
+          action: "reserve",
+          customer, date,
+          manager: currentUser ? currentUser.name : "",
+          items
+        })
+      });
+      const text = await res.text();
+      let data;
+      try{ data = JSON.parse(text); }
+      catch{ throw new Error("Сервер вернул непонятный ответ: " + text.slice(0,120)); }
+      if(!data.ok) throw new Error(data.error || "Неизвестная ошибка");
+
+      reserveFormSuccess.textContent = `Добавлено позиций: ${items.length}. Обновляю данные…`;
+      reserveFormSuccess.classList.add("show");
+      reserveModalSubmit.textContent = "Добавлено ✓";
+      setTimeout(()=>{
+        closeReserveModal();
+        syncAll(true);
+      }, 900);
+    }catch(err){
+      reserveFormError.textContent = "Не удалось добавить резерв: " + err.message;
+      reserveFormError.classList.add("show");
+      reserveModalSubmit.disabled = false;
+      reserveModalSubmit.textContent = "Добавить резерв";
+    }
+  }
+
+  reserveModalSubmit.addEventListener("click", submitReserve);
+
+  // ---------- Auth ----------
+  const SESSION_KEY = "qmt_dashboard_user";
+  let currentUser = null;
+
+  function csvUrlUsers(){
+    return `https://docs.google.com/spreadsheets/d/${FILE_ID}/export?format=csv&gid=${GID_USERS}&_=${Date.now()}`;
+  }
+
+  async function fetchUsers(){
+    const res = await fetch(csvUrlUsers(), {cache:"no-store"});
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const buf = await res.arrayBuffer();
+    const text = new TextDecoder("utf-8").decode(buf);
+    const rows = parseCSV(text);
+    const out = [];
+    for(let i=1; i<rows.length; i++){
+      const r = rows[i];
+      const name = (r[0]||"").trim();
+      const pass = (r[1]||"").trim();
+      const role = (r[2]||"").trim();
+      if(!name) continue;
+      out.push({name, pass, role});
+    }
+    return out;
+  }
+
+  function startApp(){
+    document.getElementById("loginScreen").style.display = "none";
+    document.getElementById("appRoot").classList.remove("app-hidden");
+    document.getElementById("userPill").textContent = currentUser.name;
+    // lock the "От кого" field to the logged-in user
+    fldFrom.value = currentUser.name;
+    fldFrom.readOnly = true;
+    syncAll(false);
+    setInterval(()=>syncAll(false), 3*60*1000);
+  }
+
+  document.getElementById("logoutBtn").addEventListener("click", ()=>{
+    sessionStorage.removeItem(SESSION_KEY);
+    location.reload();
+  });
+
+  const loginScreen = document.getElementById("loginScreen");
+  const loginName = document.getElementById("loginName");
+  const loginPass = document.getElementById("loginPass");
+  const loginError = document.getElementById("loginError");
+  const loginBtn = document.getElementById("loginBtn");
+
+  async function attemptLogin(){
+    const name = loginName.value.trim();
+    const pass = loginPass.value;
+    loginError.classList.remove("show"); loginError.textContent = "";
+
+    if(!name || !pass){
+      loginError.textContent = "Введите имя и пароль";
+      loginError.classList.add("show");
+      return;
+    }
+
+    loginBtn.disabled = true;
+    loginBtn.textContent = "Проверяю…";
+
+    try{
+      const users = await fetchUsers();
+      const match = users.find(u =>
+        u.name.toLowerCase() === name.toLowerCase() && u.pass === pass
+      );
+      if(!match){
+        loginError.textContent = "Неверное имя или пароль";
+        loginError.classList.add("show");
+        loginBtn.disabled = false;
+        loginBtn.textContent = "Войти";
+        return;
+      }
+      currentUser = { name: match.name, role: match.role };
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
+      startApp();
+    }catch(err){
+      loginError.textContent = "Не удалось проверить вход: " + err.message;
+      loginError.classList.add("show");
+      loginBtn.disabled = false;
+      loginBtn.textContent = "Войти";
+    }
+  }
+
+  loginBtn.addEventListener("click", attemptLogin);
+  [loginName, loginPass].forEach(el=>{
+    el.addEventListener("keydown", (e)=>{ if(e.key === "Enter") attemptLogin(); });
+  });
+
+  // restore session if already logged in this tab
+  (function initAuth(){
+    try{
+      const saved = sessionStorage.getItem(SESSION_KEY);
+      if(saved){
+        currentUser = JSON.parse(saved);
+        startApp();
+        return;
+      }
+    }catch(e){ /* ignore */ }
+    loginScreen.style.display = "flex";
+    setTimeout(()=>loginName.focus(), 50);
+  })();
+
+})();
+</script>
+
+</body>
+</html>
