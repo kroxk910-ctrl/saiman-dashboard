@@ -750,6 +750,11 @@
       <button class="add-item-btn" id="addReserveItemBtn">+ Добавить позицию</button>
     </div>
 
+    <div class="form-field">
+      <label>Комментарий</label>
+      <textarea id="rFldComment" rows="2" placeholder="Необязательно"></textarea>
+    </div>
+
     <div class="form-error" id="reserveFormError"></div>
     <div class="form-success" id="reserveFormSuccess">Резерв добавлен! Обновляю данные…</div>
 
@@ -941,11 +946,12 @@
       const prepaid = (r[4]||"").trim();
       const sum = (r[5]||"").trim();
       const manager = (r[6]||"").trim();
+      const comment = (r[7]||"").trim();
       if(!customer && !model) continue;
       // skip summary/total rows like "Итого", "Всего", etc.
       const rowText = (customer + " " + model).toLowerCase();
       if(rowText.includes("итого") || rowText.includes("всего")) continue;
-      out.push({customer, model, qty, date, prepaid, sum, manager});
+      out.push({customer, model, qty, date, prepaid, sum, manager, comment});
     }
     return out;
   }
@@ -1291,7 +1297,8 @@
     if(term) rows = rows.filter(r =>
       r.customer.toLowerCase().includes(term) ||
       r.model.toLowerCase().includes(term) ||
-      r.manager.toLowerCase().includes(term)
+      r.manager.toLowerCase().includes(term) ||
+      (r.comment||"").toLowerCase().includes(term)
     );
 
     if(reserveSort.key){
@@ -1330,6 +1337,7 @@
       <th data-sortkey="prepaid" class="${sortedClass('prepaid')}">Предоплата <span class="arrow">${arrow('prepaid')}</span></th>
       <th data-sortkey="sum" class="num ${sortedClass('sum')}">Сумма предоплаты <span class="arrow">${arrow('sum')}</span></th>
       <th data-sortkey="manager" class="${sortedClass('manager')}">Ответственный менеджер <span class="arrow">${arrow('manager')}</span></th>
+      <th>Комментарий</th>
     </tr></thead><tbody>`;
 
     for(const r of rows){
@@ -1342,6 +1350,7 @@
         <td><span class="badge ${paid ? 'done' : 'new'}">${esc(r.prepaid || (paid ? "Да" : "Нет"))}</span></td>
         <td class="num">${r.sum ? fmtNum(r.sum) : "—"}</td>
         <td>${esc(r.manager)}</td>
+        <td>${esc(r.comment) || "—"}</td>
       </tr>`;
     }
     html += `</tbody></table>`;
@@ -1712,6 +1721,7 @@
   const reserveModalOverlay = document.getElementById("reserveModalOverlay");
   const rFldCustomer = document.getElementById("rFldCustomer");
   const rFldDate = document.getElementById("rFldDate");
+  const rFldComment = document.getElementById("rFldComment");
   const reserveItemsList = document.getElementById("reserveItemsList");
   const addReserveItemBtn = document.getElementById("addReserveItemBtn");
   const reserveFormError = document.getElementById("reserveFormError");
@@ -1783,6 +1793,7 @@
     reserveModalOverlay.classList.add("open");
     rFldCustomer.value = "";
     rFldDate.value = todayStr();
+    rFldComment.value = "";
     reserveItemsList.innerHTML = "";
     addReserveItemRow();
     reserveFormError.classList.remove("show"); reserveFormError.textContent = "";
@@ -1819,6 +1830,7 @@
   async function submitReserve(){
     const customer = rFldCustomer.value.trim();
     const date = rFldDate.value.trim();
+    const comment = rFldComment.value.trim();
     const items = collectReserveItems();
 
     reserveFormError.classList.remove("show");
@@ -1860,7 +1872,7 @@
         headers: {"Content-Type": "text/plain;charset=utf-8"},
         body: JSON.stringify({
           action: "reserve",
-          customer, date,
+          customer, date, comment,
           manager: currentUser ? currentUser.name : "",
           items
         })
