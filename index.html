@@ -362,6 +362,7 @@
     background:var(--line); border:1px solid var(--line); border-radius:9px;
     overflow:hidden; margin-bottom:16px;
   }
+  .stats-5{grid-template-columns:repeat(5,1fr);}
   .stat{background:var(--panel); padding:10px 16px;}
   .stat-label{font-size:11px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:4px;}
   .stat-value{font-family:var(--mono); font-size:18px; font-weight:600; color:var(--ink); line-height:1;}
@@ -649,11 +650,12 @@
 
   <!-- ============ RESERVE VIEW ============ -->
   <section class="view" id="view-reserve">
-    <div class="stats" id="reserveStats">
+    <div class="stats stats-5" id="reserveStats">
       <div class="stat"><div class="stat-label">Всего записей</div><div class="stat-value" id="rsStatTotal">—</div></div>
       <div class="stat"><div class="stat-label">С предоплатой</div><div class="stat-value ok" id="rsStatPaid">—</div></div>
       <div class="stat"><div class="stat-label">Без предоплаты</div><div class="stat-value warn" id="rsStatUnpaid">—</div></div>
       <div class="stat"><div class="stat-label">Сумма предоплат</div><div class="stat-value accent" id="rsStatSum">—</div></div>
+      <div class="stat"><div class="stat-label">Ожидается предоплата</div><div class="stat-value warn" id="rsStatExpected">—</div></div>
     </div>
 
     <div class="toolbar">
@@ -1370,11 +1372,17 @@
     const total = reserveRows.length;
     const paid = reserveRows.filter(r => isPrepaid(r.prepaid)).length;
     const unpaid = total - paid;
-    const sum = reserveRows.reduce((acc,r)=> acc + (Number(String(r.sum).replace(/\s/g,"").replace(",",".")) || 0), 0);
+    const sum = reserveRows
+      .filter(r => isPrepaid(r.prepaid))
+      .reduce((acc,r)=> acc + (Number(String(r.sum).replace(/\s/g,"").replace(",",".")) || 0), 0);
+    const expected = reserveRows
+      .filter(r => !isPrepaid(r.prepaid) && Number(String(r.sum).replace(/\s/g,"").replace(",",".")) > 0)
+      .reduce((acc,r)=> acc + (Number(String(r.sum).replace(/\s/g,"").replace(",",".")) || 0), 0);
     document.getElementById("rsStatTotal").textContent = total;
     document.getElementById("rsStatPaid").textContent = paid;
     document.getElementById("rsStatUnpaid").textContent = unpaid;
     document.getElementById("rsStatSum").textContent = fmtNum(sum);
+    document.getElementById("rsStatExpected").textContent = fmtNum(expected);
     document.getElementById("reserveCount").textContent = total;
   }
 
