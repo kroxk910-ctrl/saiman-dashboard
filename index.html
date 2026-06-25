@@ -303,6 +303,51 @@
   .login-btn:hover{background:var(--accent-hover);}
   .login-btn:disabled{opacity:0.5; cursor:not-allowed;}
 
+  /* ===== PIN login ===== */
+  .pin-box{text-align:center;}
+  .pin-box .login-brand{justify-content:center; margin-bottom:8px;}
+  .pin-box .login-sub{margin-bottom:24px;}
+
+  .pin-dots{
+    display:flex; justify-content:center; gap:16px;
+    margin-bottom:18px;
+  }
+  .pin-dot{
+    width:14px; height:14px; border-radius:50%;
+    border:1.5px solid var(--line); background:transparent;
+    transition:all .15s ease;
+  }
+  .pin-dot.filled{background:var(--accent); border-color:var(--accent);}
+  .pin-dots.shake{animation:pinShake .4s ease;}
+  .pin-dots.error .pin-dot.filled{background:var(--danger); border-color:var(--danger);}
+  @keyframes pinShake{
+    0%,100%{transform:translateX(0);}
+    20%{transform:translateX(-8px);}
+    40%{transform:translateX(8px);}
+    60%{transform:translateX(-6px);}
+    80%{transform:translateX(6px);}
+  }
+
+  .pin-keypad{
+    display:grid; grid-template-columns:repeat(3, 1fr);
+    gap:12px; margin-top:18px;
+  }
+  .pin-key{
+    aspect-ratio:1; width:100%;
+    border-radius:50%; border:1px solid var(--line); background:var(--panel-2);
+    color:var(--ink); font-family:var(--sans); font-size:20px; font-weight:500;
+    cursor:pointer; transition:all .12s ease;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .pin-key:hover{background:var(--line); border-color:var(--ink-faint);}
+  .pin-key:active{transform:scale(0.92); background:var(--accent-dim);}
+  .pin-key-empty{visibility:hidden; cursor:default; pointer-events:none;}
+  .pin-key-back{
+    background:none; border:none; color:var(--ink-faint); font-size:18px;
+  }
+  .pin-key-back:hover{background:var(--panel-2); color:var(--ink);}
+  .pin-key-back:active{transform:scale(0.92);}
+
   /* ===== Stat strip ===== */
   .stats{
     display:grid; grid-template-columns:repeat(4,1fr); gap:1px;
@@ -481,25 +526,36 @@
 <body>
 
 <div class="login-screen" id="loginScreen">
-  <div class="login-box">
+  <div class="login-box pin-box">
     <div class="login-brand">
       <span class="brand-mark">QMT</span>
       <span class="login-title">Склад и заказы</span>
     </div>
-    <p class="login-sub">Войдите, чтобы открыть дашборд</p>
+    <p class="login-sub">Введите свой PIN-код</p>
 
-    <div class="form-field">
-      <label>Имя</label>
-      <input type="text" id="loginName" placeholder="Например: Александр" autocomplete="username">
-    </div>
-    <div class="form-field">
-      <label>Пароль</label>
-      <input type="password" id="loginPass" placeholder="Пароль" autocomplete="current-password">
+    <div class="pin-dots" id="pinDots">
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
     </div>
 
     <div class="form-error" id="loginError"></div>
 
-    <button class="login-btn" id="loginBtn">Войти</button>
+    <div class="pin-keypad" id="pinKeypad">
+      <button type="button" class="pin-key" data-key="1">1</button>
+      <button type="button" class="pin-key" data-key="2">2</button>
+      <button type="button" class="pin-key" data-key="3">3</button>
+      <button type="button" class="pin-key" data-key="4">4</button>
+      <button type="button" class="pin-key" data-key="5">5</button>
+      <button type="button" class="pin-key" data-key="6">6</button>
+      <button type="button" class="pin-key" data-key="7">7</button>
+      <button type="button" class="pin-key" data-key="8">8</button>
+      <button type="button" class="pin-key" data-key="9">9</button>
+      <button type="button" class="pin-key pin-key-empty" disabled></button>
+      <button type="button" class="pin-key" data-key="0">0</button>
+      <button type="button" class="pin-key pin-key-back" id="pinBackspace" aria-label="Удалить">⌫</button>
+    </div>
   </div>
 </div>
 
@@ -1827,7 +1883,10 @@
 
   // ---------- Auth ----------
   const SESSION_KEY = "qmt_dashboard_user";
+  const PIN_LENGTH = 4;
   let currentUser = null;
+  let pinBuffer = "";
+  let pinBusy = false;
 
   function csvUrlUsers(){
     return `https://docs.google.com/spreadsheets/d/${FILE_ID}/export?format=csv&gid=${GID_USERS}&_=${Date.now()}`;
@@ -1868,51 +1927,78 @@
   });
 
   const loginScreen = document.getElementById("loginScreen");
-  const loginName = document.getElementById("loginName");
-  const loginPass = document.getElementById("loginPass");
   const loginError = document.getElementById("loginError");
-  const loginBtn = document.getElementById("loginBtn");
+  const pinDotsEl = document.getElementById("pinDots");
+  const pinDots = pinDotsEl.querySelectorAll(".pin-dot");
+  const pinKeypad = document.getElementById("pinKeypad");
 
-  async function attemptLogin(){
-    const name = loginName.value.trim();
-    const pass = loginPass.value;
+  function renderPinDots(){
+    pinDots.forEach((dot, i)=>{
+      dot.classList.toggle("filled", i < pinBuffer.length);
+    });
+  }
+
+  function resetPin(){
+    pinBuffer = "";
+    renderPinDots();
+    pinDotsEl.classList.remove("error");
+  }
+
+  async function submitPin(){
+    pinBusy = true;
     loginError.classList.remove("show"); loginError.textContent = "";
-
-    if(!name || !pass){
-      loginError.textContent = "Введите имя и пароль";
-      loginError.classList.add("show");
-      return;
-    }
-
-    loginBtn.disabled = true;
-    loginBtn.textContent = "Проверяю…";
 
     try{
       const users = await fetchUsers();
-      const match = users.find(u =>
-        u.name.toLowerCase() === name.toLowerCase() && u.pass === pass
-      );
+      const match = users.find(u => u.pass === pinBuffer);
       if(!match){
-        loginError.textContent = "Неверное имя или пароль";
+        pinDotsEl.classList.add("error", "shake");
+        loginError.textContent = "Неверный PIN-код";
         loginError.classList.add("show");
-        loginBtn.disabled = false;
-        loginBtn.textContent = "Войти";
+        setTimeout(()=>{
+          pinDotsEl.classList.remove("shake");
+          resetPin();
+          pinBusy = false;
+        }, 400);
         return;
       }
       currentUser = { name: match.name, role: match.role };
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
       startApp();
     }catch(err){
-      loginError.textContent = "Не удалось проверить вход: " + err.message;
+      loginError.textContent = "Не удалось проверить код: " + err.message;
       loginError.classList.add("show");
-      loginBtn.disabled = false;
-      loginBtn.textContent = "Войти";
+      resetPin();
+      pinBusy = false;
     }
   }
 
-  loginBtn.addEventListener("click", attemptLogin);
-  [loginName, loginPass].forEach(el=>{
-    el.addEventListener("keydown", (e)=>{ if(e.key === "Enter") attemptLogin(); });
+  function pressDigit(digit){
+    if(pinBusy || pinBuffer.length >= PIN_LENGTH) return;
+    pinBuffer += digit;
+    renderPinDots();
+    if(pinBuffer.length === PIN_LENGTH){
+      submitPin();
+    }
+  }
+
+  function pressBackspace(){
+    if(pinBusy) return;
+    pinBuffer = pinBuffer.slice(0, -1);
+    renderPinDots();
+    loginError.classList.remove("show");
+    pinDotsEl.classList.remove("error");
+  }
+
+  pinKeypad.querySelectorAll(".pin-key[data-key]").forEach(btn=>{
+    btn.addEventListener("click", ()=> pressDigit(btn.getAttribute("data-key")));
+  });
+  document.getElementById("pinBackspace").addEventListener("click", pressBackspace);
+
+  document.addEventListener("keydown", (e)=>{
+    if(loginScreen.style.display === "none") return;
+    if(/^[0-9]$/.test(e.key)) pressDigit(e.key);
+    else if(e.key === "Backspace") pressBackspace();
   });
 
   // restore session if already logged in this tab
@@ -1926,7 +2012,6 @@
       }
     }catch(e){ /* ignore */ }
     loginScreen.style.display = "flex";
-    setTimeout(()=>loginName.focus(), 50);
   })();
 
 })();
