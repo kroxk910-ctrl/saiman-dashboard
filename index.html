@@ -305,8 +305,16 @@
 
   /* ===== PIN login ===== */
   .pin-box{text-align:center;}
-  .pin-box .login-brand{justify-content:center; margin-bottom:8px;}
+  .pin-box .login-brand{justify-content:center; margin-bottom:18px;}
   .pin-box .login-sub{margin-bottom:24px;}
+  .pin-logo{
+    display:inline-flex; align-items:center; justify-content:center;
+    font-family:var(--sans); font-size:22px; font-weight:800;
+    letter-spacing:0.06em; color:var(--accent);
+    padding:10px 22px; border-radius:12px;
+    background:linear-gradient(135deg, var(--accent-dim), transparent);
+    border:1px solid var(--accent-dim);
+  }
 
   .pin-dots{
     display:flex; justify-content:center; gap:16px;
@@ -528,8 +536,7 @@
 <div class="login-screen" id="loginScreen">
   <div class="login-box pin-box">
     <div class="login-brand">
-      <span class="brand-mark">QMT</span>
-      <span class="login-title">Склад и заказы</span>
+      <span class="pin-logo">QMT</span>
     </div>
     <p class="login-sub">Введите свой PIN-код</p>
 
