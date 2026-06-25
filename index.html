@@ -415,6 +415,9 @@
   }
   .status-menu-item:hover{background:var(--panel-2); color:var(--ink);}
   .status-menu-item.current{color:var(--accent); font-weight:600;}
+  .status-menu-divider{height:1px; background:var(--line); margin:4px 2px;}
+  .status-menu-danger{color:var(--danger);}
+  .status-menu-danger:hover{background:var(--danger-bg); color:var(--danger);}
 
   /* ===== States ===== */
   .state-box{
@@ -1105,6 +1108,25 @@
       menu.appendChild(item);
     });
 
+    const divider = document.createElement("div");
+    divider.className = "status-menu-divider";
+    menu.appendChild(divider);
+
+    const deleteItem = document.createElement("button");
+    deleteItem.type = "button";
+    deleteItem.className = "status-menu-item status-menu-danger";
+    deleteItem.textContent = "Удалить заказ";
+    deleteItem.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      closeStatusMenu();
+      const rowData = orderRows.find(r => String(r.sheetRow) === String(sheetRow));
+      const label = rowData ? `${rowData.code} — ${rowData.qty} шт. (${rowData.from})` : "этот заказ";
+      if(confirm(`Точно удалить заказ?\n${label}`)){
+        deleteOrder(sheetRow, btn);
+      }
+    });
+    menu.appendChild(deleteItem);
+
     document.body.appendChild(menu);
     const rect = btn.getBoundingClientRect();
     menu.style.top = (rect.bottom + window.scrollY + 4) + "px";
@@ -1141,6 +1163,30 @@
     }catch(err){
       cell.innerHTML = originalHTML;
       alert("Не удалось изменить статус: " + err.message);
+    }
+  }
+
+  async function deleteOrder(sheetRow, btn){
+    const row = btn.closest("tr");
+    const originalOpacity = row.style.opacity;
+    row.style.opacity = "0.4";
+
+    try{
+      const res = await fetch(APPS_SCRIPT_URL, {
+        method: "POST",
+        headers: {"Content-Type": "text/plain;charset=utf-8"},
+        body: JSON.stringify({action: "deleteOrder", sheetRow: Number(sheetRow)})
+      });
+      const text = await res.text();
+      let data;
+      try{ data = JSON.parse(text); }
+      catch{ throw new Error("Сервер вернул непонятный ответ"); }
+      if(!data.ok) throw new Error(data.error || "Неизвестная ошибка");
+
+      await syncAll(true);
+    }catch(err){
+      row.style.opacity = originalOpacity;
+      alert("Не удалось удалить заказ: " + err.message);
     }
   }
 
