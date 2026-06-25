@@ -1068,7 +1068,7 @@
       const rid = "stock_detail_" + idx;
       html += `<tr class="${rowClass} expandable-row" data-target="${rid}">
         <td class="expand-toggle"><span class="expand-arrow">▸</span></td>
-        <td class="code"><span class="idm-trigger idm-clickable" data-code="${esc(r.code)}">${esc(r.code)}</span></td>
+        <td class="code">${esc(r.code)}</td>
         <td class="name">${esc(r.name)}</td>
         <td class="num qty">${r.qty===null ? "—" : fmtNum(r.qty)}</td>
       </tr>`;
@@ -1571,7 +1571,7 @@
       const rid = "price_detail_" + idx;
       html += `<tr class="expandable-row" data-target="${rid}">
         <td class="expand-toggle"><span class="expand-arrow">▸</span></td>
-        <td class="code"><span class="idm-trigger idm-clickable" data-code="${esc(r.code)}">${esc(r.code)}</span></td>
+        <td class="code">${esc(r.code)}</td>
         <td class="name">${esc(r.name)}</td>
       </tr>`;
       html += `<tr class="detail-row" id="${rid}" style="display:none;">
