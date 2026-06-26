@@ -250,6 +250,20 @@
   }
   .add-item-btn:hover{border-color:var(--accent); color:var(--accent);}
 
+  .radio-group{display:flex; gap:10px;}
+  .radio-option{
+    flex:1; display:flex; align-items:center; gap:8px;
+    background:var(--panel-2); border:1px solid var(--line); border-radius:7px;
+    padding:10px 14px; cursor:pointer; transition:all .15s ease;
+  }
+  .radio-option:hover{border-color:var(--ink-faint);}
+  .radio-option input[type="radio"]{
+    width:16px; height:16px; accent-color:var(--accent); cursor:pointer; margin:0;
+  }
+  .radio-option span{font-size:13px; color:var(--ink-dim); font-weight:500;}
+  .radio-option:has(input:checked){border-color:var(--accent); background:var(--accent-dim);}
+  .radio-option:has(input:checked) span{color:var(--ink);}
+
   .reserve-item-row{
     background:var(--panel-2); border:1px solid var(--line); border-radius:8px;
     padding:10px; margin-bottom:8px;
@@ -621,6 +635,7 @@
     <button class="tab-btn" data-view="orders">Заказы заводу <span class="count" id="ordersCount">—</span></button>
     <button class="tab-btn" data-view="reserve">Резерв <span class="count" id="reserveCount">—</span></button>
     <button class="tab-btn" data-view="pricelist">Прайс-лист <span class="count" id="pricelistCount">—</span></button>
+    <button class="tab-btn" data-view="myorders">Мои заказы <span class="count" id="myOrdersCount">—</span></button>
   </div>
 </div>
 
@@ -726,6 +741,28 @@
     </div>
   </section>
 
+  <!-- ============ MY ORDERS VIEW ============ -->
+  <section class="view" id="view-myorders">
+    <div class="stats" id="myOrdersStats">
+      <div class="stat"><div class="stat-label">Всего моих заказов</div><div class="stat-value" id="moStatTotal">—</div></div>
+      <div class="stat"><div class="stat-label">В процессе</div><div class="stat-value warn" id="moStatWait">—</div></div>
+      <div class="stat"><div class="stat-label">Реализовано</div><div class="stat-value ok" id="moStatDone">—</div></div>
+    </div>
+
+    <div class="toolbar">
+      <div class="search-box"><input type="text" id="myOrdersSearch" placeholder="Поиск по коду, комментарию…"></div>
+      <div class="toolbar-spacer"></div>
+      <span class="row-count" id="myOrdersRowCount"></span>
+      <button class="new-order-btn" id="newOrderBtnMine">+ Новый заказ</button>
+    </div>
+
+    <div class="table-wrap">
+      <div id="myOrdersTableHost">
+        <div class="state-box"><div class="spinner"></div><div class="big">Загружаем заказы…</div></div>
+      </div>
+    </div>
+  </section>
+
 </main>
 
 <div class="modal-overlay" id="modalOverlay">
@@ -744,6 +781,20 @@
       <label>Позиции заказа <span class="required">*</span></label>
       <div id="itemsList"></div>
       <button class="add-item-btn" id="addItemBtn">+ Добавить позицию</button>
+    </div>
+
+    <div class="form-field">
+      <label>Куда подготовить</label>
+      <div class="radio-group">
+        <label class="radio-option">
+          <input type="radio" name="destination" value="Гараж" checked>
+          <span>Гараж</span>
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="destination" value="Магазин">
+          <span>Магазин</span>
+        </label>
+      </div>
     </div>
 
     <div class="form-field">
@@ -899,6 +950,7 @@
   let pricelistRows = []; // {code, name, priceB, priceC, priceD, priceRetail}
   let stockSort = {key:null, dir:1};
   let orderSort = {key:"date", dir:-1};
+  let myOrderSort = {key:"date", dir:-1};
   let reserveSort = {key:"date", dir:-1};
   let pricelistSort = {key:null, dir:1};
   let stockFilter = "all";
@@ -948,12 +1000,13 @@
       const status = (r[4]||"").trim();
       const comment = (r[5]||"").trim();
       const closed = (r[6]||"").trim();
+      const destination = (r[7]||"").trim();
       if(!date && !from && !code) continue;
       const orderRowText = (from + " " + code).toLowerCase();
       if(orderRowText.includes("итого") || orderRowText.includes("всего")) continue;
       // i is the index within the CSV rows array (header = index 0),
       // so the real row number in the Google Sheet is i + 1.
-      out.push({date, from, code, qty, status, comment, closed, sheetRow: i + 1});
+      out.push({date, from, code, qty, status, comment, closed, destination, sheetRow: i + 1});
     }
     return out;
   }
@@ -1113,45 +1166,74 @@
 
   // ---------- Render: ORDERS ----------
   function renderOrders(){
-    let rows = orderRows.slice();
+    renderOrdersGeneric({
+      sourceRows: orderRows,
+      applyStatusFilter: true,
+      hostId: "ordersTableHost",
+      searchId: "ordersSearch",
+      rowCountId: "ordersRowCount",
+      sortState: orderSort,
+      onSortChange: renderOrders
+    });
+  }
 
-    if(orderFilter !== "all") rows = rows.filter(r => statusFilterKey(r.status) === orderFilter);
+  function renderMyOrders(){
+    const mine = currentUser ? orderRows.filter(r => r.from === currentUser.name) : [];
+    renderOrdersGeneric({
+      sourceRows: mine,
+      applyStatusFilter: false,
+      hostId: "myOrdersTableHost",
+      searchId: "myOrdersSearch",
+      rowCountId: "myOrdersRowCount",
+      sortState: myOrderSort,
+      onSortChange: renderMyOrders
+    });
+  }
 
-    const term = (document.getElementById("ordersSearch").value||"").trim().toLowerCase();
+  function renderOrdersGeneric(cfg){
+    let rows = cfg.sourceRows.slice();
+
+    if(cfg.applyStatusFilter && orderFilter !== "all"){
+      rows = rows.filter(r => statusFilterKey(r.status) === orderFilter);
+    }
+
+    const term = (document.getElementById(cfg.searchId).value||"").trim().toLowerCase();
     if(term) rows = rows.filter(r =>
       r.code.toLowerCase().includes(term) ||
       r.from.toLowerCase().includes(term) ||
       r.comment.toLowerCase().includes(term)
     );
 
-    if(orderSort.key){
+    const sortState = cfg.sortState;
+    if(sortState.key){
       rows.sort((a,b)=>{
-        let av = (a[orderSort.key]||"").toString().toLowerCase();
-        let bv = (b[orderSort.key]||"").toString().toLowerCase();
-        if(orderSort.key === "date" || orderSort.key === "closed"){
-          av = toSortableDate(a[orderSort.key]); bv = toSortableDate(b[orderSort.key]);
+        let av = (a[sortState.key]||"").toString().toLowerCase();
+        let bv = (b[sortState.key]||"").toString().toLowerCase();
+        if(sortState.key === "date" || sortState.key === "closed"){
+          av = toSortableDate(a[sortState.key]); bv = toSortableDate(b[sortState.key]);
         }
-        if(av < bv) return -1 * orderSort.dir;
-        if(av > bv) return 1 * orderSort.dir;
+        if(av < bv) return -1 * sortState.dir;
+        if(av > bv) return 1 * sortState.dir;
         return 0;
       });
     }
 
-    document.getElementById("ordersRowCount").textContent = `${rows.length} из ${orderRows.length}`;
+    document.getElementById(cfg.rowCountId).textContent = `${rows.length} из ${cfg.sourceRows.length}`;
 
-    const host = document.getElementById("ordersTableHost");
+    const host = document.getElementById(cfg.hostId);
     if(rows.length === 0){
       host.innerHTML = `<div class="state-box"><div class="big">Ничего не найдено</div><div>Попробуй изменить фильтр или поиск</div></div>`;
       return;
     }
 
-    const arrow = (key) => orderSort.key===key ? (orderSort.dir===1?"▲":"▼") : "";
-    const sortedClass = (key) => orderSort.key===key ? "sorted" : "";
+    const arrow = (key) => sortState.key===key ? (sortState.dir===1?"▲":"▼") : "";
+    const sortedClass = (key) => sortState.key===key ? "sorted" : "";
 
     let html = `<table><thead><tr>
       <th data-sortkey="from" class="${sortedClass('from')}">От кого <span class="arrow">${arrow('from')}</span></th>
       <th data-sortkey="code" class="${sortedClass('code')}">Код <span class="arrow">${arrow('code')}</span></th>
       <th class="num">Кол-во</th>
+      <th>Место доставки</th>
       <th data-sortkey="status" class="${sortedClass('status')}">Статус <span class="arrow">${arrow('status')}</span></th>
       <th>Комментарий</th>
       <th data-sortkey="date" class="${sortedClass('date')}">Дата <span class="arrow">${arrow('date')}</span></th>
@@ -1163,6 +1245,7 @@
         <td>${esc(r.from)}</td>
         <td class="code"><span class="idm-trigger idm-clickable" data-code="${esc(r.code)}">${esc(r.code)}</span></td>
         <td class="num">${esc(r.qty)}</td>
+        <td>${esc(r.destination) || "—"}</td>
         <td>
           <button type="button" class="badge badge-btn ${cls}" data-row="${r.sheetRow}" data-status="${esc(r.status)}">
             ${esc(r.status)}
@@ -1185,9 +1268,9 @@
     host.querySelectorAll("th[data-sortkey]").forEach(th=>{
       th.addEventListener("click", ()=>{
         const key = th.getAttribute("data-sortkey");
-        if(orderSort.key === key) orderSort.dir *= -1;
-        else { orderSort.key = key; orderSort.dir = 1; }
-        renderOrders();
+        if(sortState.key === key) sortState.dir *= -1;
+        else { sortState.key = key; sortState.dir = 1; }
+        cfg.onSortChange();
       });
     });
   }
@@ -1429,6 +1512,20 @@
     document.getElementById("ordersCount").textContent = total;
   }
 
+  function renderMyOrdersStats(){
+    const mine = currentUser ? orderRows.filter(r => r.from === currentUser.name) : [];
+    const total = mine.length;
+    const inProgress = mine.filter(r => {
+      const c = statusClass(r.status);
+      return c === "new" || c === "progress" || c === "stocked";
+    }).length;
+    const done = mine.filter(r => statusClass(r.status)==="done").length;
+    document.getElementById("moStatTotal").textContent = total;
+    document.getElementById("moStatWait").textContent = inProgress;
+    document.getElementById("moStatDone").textContent = done;
+    document.getElementById("myOrdersCount").textContent = total;
+  }
+
   // ---------- Render: RESERVE ----------
   function renderReserve(){
     let rows = reserveRows.slice();
@@ -1644,6 +1741,7 @@
       pricelistRows = buildPricelist(pricelistRaw);
       renderStockStats(); renderStock();
       renderOrdersStats(); renderOrders();
+      renderMyOrdersStats(); renderMyOrders();
       renderReserveStats(); renderReserve();
       renderPricelistStats(); renderPricelist();
       const now = new Date();
@@ -1691,6 +1789,7 @@
 
   document.getElementById("stockSearch").addEventListener("input", renderStock);
   document.getElementById("ordersSearch").addEventListener("input", renderOrders);
+  document.getElementById("myOrdersSearch").addEventListener("input", renderMyOrders);
   document.getElementById("reserveSearch").addEventListener("input", renderReserve);
   document.getElementById("pricelistSearch").addEventListener("input", renderPricelist);
 
@@ -1772,6 +1871,8 @@
     fldComment.value = "";
     itemsList.innerHTML = "";
     addItemRow();
+    const defaultDest = document.querySelector('input[name="destination"][value="Гараж"]');
+    if(defaultDest) defaultDest.checked = true;
     formError.classList.remove("show"); formError.textContent = "";
     formSuccess.classList.remove("show");
     modalSubmit.disabled = false;
@@ -1787,6 +1888,7 @@
   }
 
   document.getElementById("newOrderBtn").addEventListener("click", openModal);
+  document.getElementById("newOrderBtnMine").addEventListener("click", openModal);
   document.getElementById("modalClose").addEventListener("click", closeModal);
   document.getElementById("modalCancel").addEventListener("click", closeModal);
   modalOverlay.addEventListener("click", (e)=>{ if(e.target === modalOverlay) closeModal(); });
@@ -1808,6 +1910,8 @@
     const from = fldFrom.value.trim();
     const comment = fldComment.value.trim();
     const items = collectItems();
+    const destinationInput = document.querySelector('input[name="destination"]:checked');
+    const destination = destinationInput ? destinationInput.value : "";
 
     formError.classList.remove("show");
 
@@ -1841,7 +1945,7 @@
       const res = await fetch(APPS_SCRIPT_URL, {
         method: "POST",
         headers: {"Content-Type": "text/plain;charset=utf-8"},
-        body: JSON.stringify({from, comment, items})
+        body: JSON.stringify({from, comment, destination, items})
       });
       const text = await res.text();
       let data;
