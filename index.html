@@ -402,6 +402,8 @@
   .ro-table .num{text-align:right; font-family:var(--mono);}
   .ro-table .order{color:var(--accent); font-weight:700; font-size:13.5px;}
   .ro-pri{white-space:nowrap; font-size:12px;}
+  .ro-src{font-size:11px; color:var(--ink-faint); margin-top:2px;}
+  .ro-short{color:var(--wait);}
   .ro-pri.urgent{color:var(--danger);} .ro-pri.soon{color:var(--wait);}
   @media (max-width: 760px){ .an-grid{grid-template-columns:1fr;} }
 
@@ -646,7 +648,7 @@
   .ok-btn:hover{filter:brightness(1.2);}
   .ok-btn:disabled{opacity:.5; cursor:default;}
   [hidden]{display:none !important;}
-  .role-tag{font-size:12px; font-weight:500; color:var(--ink-faint); margin-left:6px;}
+  .role-tag{display:none;}   /* роль возле имени не показываем (права от неё всё равно зависят) */
   .badge.ready{background:var(--accent-dim); color:var(--accent);}
   .badge.cancelled{background:var(--panel-2); color:var(--ink-faint); text-decoration:line-through;}
   .badge-btn .caret{font-size:9px; opacity:.7; margin-left:1px;}
@@ -700,7 +702,6 @@
     .brand{gap:8px; min-width:0; flex:1 1 auto;}
     .brand-mark{font-size:14px;}
     .user-pill{font-size:14px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0; border:none;}
-    .role-tag{font-size:11px;}
     .status-cluster{width:auto; flex-wrap:nowrap; gap:6px; flex:0 0 auto;}
     .sync-pill{padding:0; border:none; background:none; width:30px; height:34px; justify-content:center;}
     .sync-pill #syncText{display:none;}
@@ -2108,14 +2109,14 @@
     if(!force){
       try{
         const saved = JSON.parse(localStorage.getItem(META_KEY) || "null");
-        if(saved && saved.requests && saved.receipts && "kits" in saved) return saved;
+        if(saved && saved.requests && saved.receipts && "kits" in saved && "shortage" in saved) return saved;
       }catch(e){ /* ignore */ }
     }
     const res = await fetch(APPS_SCRIPT_URL + "?action=meta&_=" + Date.now(), {cache:"no-store"});
     let data = null;
     try{ data = JSON.parse(await res.text()); }catch(e){ /* not json */ }
     if(!data || !data.ok || !data.gids) throw new Error("Apps Script не обновлён: разверни новую версию скрипта");
-    const gids = Object.assign({kits: ""}, data.gids);
+    const gids = Object.assign({kits: "", shortage: ""}, data.gids);
     try{ localStorage.setItem(META_KEY, JSON.stringify(gids)); }catch(e){ /* ignore */ }
     return gids;
   }
@@ -2125,15 +2126,21 @@
   async function fetchOpsSheets(){
     let meta = await getMeta(false);
     try{
-      return await Promise.all([fetchSheet(meta.requests), fetchSheet(meta.receipts), fetchKits(meta.kits)]);
+      return await Promise.all([fetchSheet(meta.requests), fetchSheet(meta.receipts), fetchKits(meta.kits), fetchKits(meta.shortage)]);
     }catch(err){
       meta = await getMeta(true);   // листы могли пересоздать — спросим gid заново
-      return await Promise.all([fetchSheet(meta.requests), fetchSheet(meta.receipts), fetchKits(meta.kits)]);
+      return await Promise.all([fetchSheet(meta.requests), fetchSheet(meta.receipts), fetchKits(meta.kits), fetchKits(meta.shortage)]);
     }
   }
 
   // ---------- Комплекты: «IC/компл» = IC + YJ (собираются при реализации, в остатках их нет) ----------
   let kitIndex = {};
+  // Лист «Дефицит»: A=Дата, B=Менеджер, C=Код, D=Хотели, E=Было, F=Не хватило
+  let shortageRows = [];
+  function buildShortage(rows){
+    return (rows || []).slice(1).map(r => ({key: dateKey(r[0]), manager: (r[1] || "").trim(), code: normCode(r[2]), short: parseNum(r[5])}))
+      .filter(x => x.key && x.code && x.short > 0);
+  }
   function buildKits(rows){
     const out = {};
     if(!rows) return out;
@@ -2339,35 +2346,47 @@
     const v = roSettings();
     const today = todayKey();
     const from = keyPlusDays(today, -(v.window - 1));
-    const demand = {};
+    const demand = {};   // код → {ship, direct, short}
+    const slot = c => demand[c] || (demand[c] = {ship: 0, direct: 0, short: 0});
     let firstAny = "";
+    const seen = k => { if(k && k <= today && (!firstAny || k < firstAny)) firstAny = k; };
     requestRows.forEach(r => {
-      if(r.status !== ST_SHIPPED) return;
+      if(r.status !== ST_SHIPPED && r.status !== ST_DIRECT) return;
       const k = dateKey(r.shipDate);
       if(!k || k > today) return;
-      if(!firstAny || k < firstAny) firstAny = k;
+      seen(k);
       if(k < from) return;
+      const kind = r.status === ST_DIRECT ? "direct" : "ship";
       const kit = !r.kit && kitIndex[r.codeKey];
       (kit ? kit.parts.map(p => ({code: p.code, qty: p.qty * r.qty})) : [{code: r.codeKey, qty: r.qty}])
-        .forEach(p => { demand[p.code] = (demand[p.code] || 0) + p.qty; });
+        .forEach(p => { slot(p.code)[kind] += p.qty; });
+    });
+    shortageRows.forEach(x => {
+      seen(x.key);
+      if(x.key < from || x.key > today) return;
+      const kit = kitIndex[x.code];
+      (kit && !stockIndex[x.code] ? kit.parts.map(p => ({code: p.code, qty: p.qty * x.short})) : [{code: x.code, qty: x.short}])
+        .forEach(p => { slot(p.code).short += p.qty; });
     });
     // если истории меньше окна — делим на реальное число дней (но не меньше недели)
     const history = firstAny ? daysBetween(firstAny, today) + 1 : 0;
     const days = Math.max(7, Math.min(v.window, history || v.window));
     const out = [];
-    Object.entries(demand).forEach(([code, qty]) => {
-      if(!stockIndex[code]) return;
+    Object.entries(demand).forEach(([code, d]) => {
+      const qty = d.ship + d.direct + d.short;
       const rate = qty / days;
       if(!(rate > 0)) return;
-      const avail = availOf(code);
+      const inStock = !!stockIndex[code];
+      const avail = inStock ? availOf(code) : 0;
       const rop = rate * (v.lead + v.safety);
       if(avail > rop) return;
       const target = rate * (v.lead + v.cover);
       const round = Math.max(1, v.round);
       const order = Math.max(round, Math.ceil((target - avail) / round) * round);
       const left = Math.floor(avail / rate);
-      out.push({code, name: stockIndex[code].name, shown: stockIndex[code].code, rate, avail, left, order,
-                urgent: avail <= rate * v.lead, sold: qty});
+      const pl = pricelistRows.find(p => normCode(p.code) === code);
+      out.push({code, name: inStock ? stockIndex[code].name : (pl ? pl.name : "нет в остатках 1С"), shown: inStock ? stockIndex[code].code : code,
+                rate, avail, left, order, urgent: avail <= rate * v.lead, parts: d, inStock});
     });
     out.sort((a, b) => (b.urgent - a.urgent) || (a.left - b.left) || (b.rate - a.rate));
     return {list: out, history, days, settings: v};
@@ -2380,7 +2399,7 @@
     note.className = "ro-note" + (p.history && p.history < 14 ? " warn" : "");
     note.textContent = !p.history ? "Пока нет ни одной отгрузки — рекомендации появятся, когда начнутся отгрузки."
       : (p.history < 14 ? `⚠ История отгрузок пока ${p.history} дн. — рекомендации приблизительные. ` : "") +
-        `Спрос за ${p.days} дн. Заказываем, если остатка не хватит на ${v.lead + v.safety} дн. (поставка ${v.lead} + запас ${v.safety}); количество — чтобы после поставки хватило на ${v.cover} дн.`;
+        `Спрос за ${p.days} дн. = отгрузки со склада + прямые с завода + то, чего не хватило менеджерам. Заказываем, если остатка не хватит на ${v.lead + v.safety} дн. (поставка ${v.lead} + запас ${v.safety}); количество — чтобы после поставки хватило на ${v.cover} дн.`;
     if(!p.list.length){
       host.innerHTML = p.history ? `<div class="state-box" style="padding:18px"><div class="big">✅ Сейчас заказывать ничего не нужно</div><div>Всех ходовых позиций хватает дольше ${v.lead + v.safety} дн.</div></div>` : "";
       return;
@@ -2389,7 +2408,9 @@
     host.innerHTML = `<table class="ro-table"><thead><tr><th></th><th>Код</th><th>Наименование</th><th class="num">Расход/день</th><th class="num">Доступно</th><th>Закончится</th><th class="num">Заказать</th></tr></thead><tbody>${
       p.list.map(x => `<tr>
         <td class="ro-pri ${x.urgent ? "urgent" : "soon"}">${x.urgent ? "🔴 срочно" : "🟡 пора"}</td>
-        <td class="code">${esc(x.shown)}</td><td class="name">${esc(x.name)}</td>
+        <td class="code">${esc(x.shown)}</td><td class="name">${esc(x.name)}<div class="ro-src">${[
+          x.parts.ship ? `отгружено ${fmtNum(x.parts.ship)}` : "", x.parts.direct ? `с завода ${fmtNum(x.parts.direct)}` : "",
+          x.parts.short ? `<span class="ro-short">не хватило ${fmtNum(x.parts.short)}</span>` : ""].filter(Boolean).join(" · ")}</div></td>
         <td class="num">${fmtNum(Math.round(x.rate * 10) / 10)}</td>
         <td class="num">${fmtNum(x.avail)}</td>
         <td>${x.avail <= 0 ? "уже нет" : `~через ${fmtNum(x.left)} дн. (${outDate(x.left)})`}</td>
@@ -2514,6 +2535,7 @@
         pendingEvents = detectRequestEvents(requests);
         receiptRows = buildReceipts(ops.value[1]);
         if(ops.value[2]) kitIndex = buildKits(ops.value[2]);
+        if(ops.value[3]) shortageRows = buildShortage(ops.value[3]);
       } else {
         console.error(ops.reason);
         opsError = ops.reason && ops.reason.message ? ops.reason.message : "не удалось загрузить заявки";
@@ -2690,7 +2712,12 @@
         if(absent.length) return `Для комплекта не хватает позиций в остатках: ${absent.join(", ")}`;
         const short = Object.entries(need).filter(([k,q]) => q > availOf(k))
           .map(([k,q]) => `${stockIndex[k].code} — доступно ${fmtNum(availOf(k))}, нужно ${fmtNum(q)}`);
-        if(short.length) return "Не хватает на складе: " + short.join("; ");
+        if(short.length){
+          // спрос, который склад не закрыл, — в лист «Дефицит» (для рекомендации к заказу)
+          const cm = document.getElementById("fldRequestComment");
+          api("reportShortage", {items: items.map(it => ({code: it.code, qty: it.qty})), comment: cm ? cm.value.trim() : ""}).catch(() => {});
+          return "Не хватает на складе: " + short.join("; ");
+        }
       }
       return null;
     }
