@@ -569,6 +569,33 @@
   a.modal-btn{display:block; text-align:center; text-decoration:none; line-height:1.4;}
   .tg-linked{font-size:13px; color:var(--ok); background:var(--ok-bg); padding:12px 14px; border-radius:8px; margin-bottom:6px;}
   .modal-btn.danger{background:none; color:var(--danger); border-color:var(--danger);}
+  .notif-section-title{
+    font-size:11px; font-weight:600; color:var(--ink-faint); text-transform:uppercase;
+    letter-spacing:0.06em; margin:4px 0 10px;
+  }
+  .notif-section-title.second{margin-top:22px; padding-top:18px; border-top:1px solid var(--line);}
+  .notif-row{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; font-size:13px; color:var(--ink-dim);}
+  .notif-row .ok{color:var(--ok);} .notif-row .bad{color:var(--danger);}
+  .small-btn{
+    background:var(--panel-2); border:1px solid var(--line); color:var(--ink);
+    font-family:var(--sans); font-size:12px; font-weight:600; padding:6px 12px; border-radius:6px; cursor:pointer; white-space:nowrap;
+  }
+  .small-btn:hover{border-color:var(--accent); color:var(--accent);}
+  .toast-stack{
+    position:fixed; right:18px; bottom:18px; z-index:400;
+    display:flex; flex-direction:column; gap:10px; width:min(360px, calc(100vw - 36px));
+  }
+  .toast{
+    background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--accent);
+    border-radius:9px; padding:12px 34px 12px 14px; box-shadow:0 14px 40px rgba(0,0,0,0.5);
+    cursor:pointer; position:relative; animation:toastIn .22s ease;
+  }
+  .toast.warn{border-left-color:var(--wait);} .toast.ok{border-left-color:var(--ok);} .toast.bad{border-left-color:var(--danger);}
+  .toast-title{font-size:13px; font-weight:600; color:var(--ink); margin-bottom:3px;}
+  .toast-body{font-size:12px; color:var(--ink-dim); line-height:1.45;}
+  .toast-close{position:absolute; top:6px; right:8px; background:none; border:none; color:var(--ink-faint); font-size:16px; cursor:pointer;}
+  .toast-close:hover{color:var(--ink);}
+  @keyframes toastIn{from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:none;}}
   .ok-btn{
     background:var(--ok-bg); border:1px solid var(--ok); color:var(--ok);
     font-family:var(--sans); font-size:12px; font-weight:600; padding:6px 12px; border-radius:6px;
@@ -667,7 +694,7 @@
         <span class="sync-dot" id="syncDot"></span>
         <span id="syncText">Обновляется…</span>
       </div>
-      <button class="refresh-btn" id="tgBtn" title="Уведомления в Telegram">🔔 Telegram</button>
+      <button class="refresh-btn" id="tgBtn" title="Уведомления в Telegram и в браузере">🔔 Уведомления</button>
       <button class="refresh-btn" id="refreshBtn">↻ Обновить</button>
     </div>
   </div>
@@ -800,6 +827,7 @@
 </main>
 
 <datalist id="stockCodes"></datalist>
+<div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
 <!-- ============ NEW REQUEST MODAL ============ -->
 <div class="modal-overlay" id="requestModalOverlay">
@@ -886,11 +914,15 @@
 <div class="modal-overlay" id="tgModalOverlay">
   <div class="modal-box">
     <div class="modal-header">
-      <span class="modal-title">Уведомления в Telegram</span>
+      <span class="modal-title">Уведомления</span>
       <button class="modal-close" data-close>×</button>
     </div>
+    <div class="notif-section-title">Telegram — приходят, даже когда дашборд закрыт</div>
     <div id="tgBody"></div>
     <div class="form-error" id="tgError"></div>
+    <div class="notif-section-title second">В браузере — пока дашборд открыт</div>
+    <div id="browserNotifBody"></div>
+    <div class="modal-actions"><button class="modal-btn cancel" data-close>Закрыть</button></div>
   </div>
 </div>
 
@@ -906,7 +938,7 @@
 </div>
 
 <footer>
-  Данные из Google Sheets · автообновление каждые 3 минуты · последнее обновление: <span id="footTime">—</span>
+  Данные из Google Sheets · автообновление каждую минуту · последнее обновление: <span id="footTime">—</span>
 </footer>
 
 </div><!-- /#appRoot -->
@@ -1763,7 +1795,8 @@
     receiptEditor.refresh();
   }
 
-  let opsError = "";   // ошибка загрузки заявок/посадок — остатки всё равно показываем
+  let opsError = "";
+  let pendingEvents = [];   // ошибка загрузки заявок/посадок — остатки всё равно показываем
 
   async function syncAll(isManual){
     if(syncing){ syncQueued = true; return; }
@@ -1786,12 +1819,14 @@
         opsError = "";
         requestRows = buildRequestRows(ops.value[0]);
         requests = groupRequests(requestRows);
+        pendingEvents = detectRequestEvents(requests);
         receiptRows = buildReceipts(ops.value[1]);
       } else {
         console.error(ops.reason);
         opsError = ops.reason && ops.reason.message ? ops.reason.message : "не удалось загрузить заявки";
       }
       renderAll();
+      notifyAll(pendingEvents); pendingEvents = [];
       document.getElementById("footTime").textContent = new Date().toLocaleTimeString("ru-RU");
       setSyncState(opsError ? "error" : "ok", opsError ? "Заявки не загрузились" : "Данные актуальны");
     }catch(err){
@@ -2027,7 +2062,7 @@
 
   function setTgButton(linked){
     tgBtn.classList.toggle("tg-on", !!linked);
-    tgBtn.textContent = linked ? "🔔 Telegram ✓" : "🔔 Telegram";
+    tgBtn.textContent = linked ? "🔔 Уведомления ✓" : "🔔 Уведомления";
   }
 
   function tgWhat(){
@@ -2042,9 +2077,8 @@
     }
     if(state === "linked"){
       tgBody.innerHTML = `<div class="tg-linked">✅ Telegram подключён. Сюда приходят ${tgWhat()}.</div>
-        <div class="modal-actions">
-          <button class="modal-btn danger" id="tgUnlink">Отключить</button>
-          <button class="modal-btn cancel" data-close>Закрыть</button>
+        <div class="modal-actions" style="margin-top:10px">
+          <button class="modal-btn danger" id="tgUnlink">Отключить Telegram</button>
         </div>`;
       document.getElementById("tgUnlink").addEventListener("click", tgUnlink);
       return;
@@ -2059,9 +2093,8 @@
       <p class="modal-note">Будут приходить ${tgWhat()}.</p>
       ${link ? `<a class="modal-btn submit" href="${link}" target="_blank" rel="noopener" id="tgOpen">Открыть бота</a>`
              : `<div class="form-error show">Не удалось узнать имя бота. Попробуй позже.</div>`}
-      <div class="modal-actions">
-        <button class="modal-btn cancel" data-close>Закрыть</button>
-        <button class="modal-btn submit" id="tgCheck">Проверить</button>
+      <div class="modal-actions" style="margin-top:10px">
+        <button class="modal-btn cancel" id="tgCheck">Проверить подключение</button>
       </div>`;
     document.getElementById("tgCheck").addEventListener("click", tgCheck);
   }
@@ -2077,6 +2110,7 @@
 
   async function openTg(){
     openOverlay(tgOverlay);
+    renderBrowserNotif();
     renderTg("loading");
     const r = await refreshTgStatus();
     if(!r){ renderTg("form"); showMsg(tgError, "Не удалось связаться с сервером. Нажми «Обновить» и попробуй снова."); return; }
@@ -2086,13 +2120,14 @@
   async function tgCheck(){
     const btn = document.getElementById("tgCheck");
     btn.disabled = true; btn.textContent = "Проверяю…";
+    const label = "Проверить подключение";
     try{
       await api("linkTelegram", {code: tgCode});
       setTgButton(true);
       renderTg("linked");
     }catch(e){
       showMsg(tgError, e.message);
-      btn.disabled = false; btn.textContent = "Проверить";
+      btn.disabled = false; btn.textContent = label;
     }
   }
 
@@ -2106,6 +2141,154 @@
   }
 
   tgBtn.addEventListener("click", openTg);
+
+  // ---------- Уведомления в браузере ----------
+  // Между обновлениями сравниваем заявки и показываем, что изменилось:
+  // заведующему — новые заявки и отмены менеджерами, менеджеру — изменения его заявок.
+  const SOUND_KEY = "qmt_sound";
+  const toastStack = document.getElementById("toastStack");
+  let lastReqSnapshot = null;
+  let unseen = 0;
+  const baseTitle = document.title;
+  let audioCtx = null;
+
+  function soundOn(){ try{ return localStorage.getItem(SOUND_KEY) !== "off"; }catch(e){ return true; } }
+  function setSound(on){ try{ localStorage.setItem(SOUND_KEY, on ? "on" : "off"); }catch(e){ /* ignore */ } }
+
+  // Браузеры разрешают звук только после первого клика по странице
+  document.addEventListener("click", ()=>{
+    try{
+      if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if(audioCtx.state === "suspended") audioCtx.resume();
+    }catch(e){ /* no audio */ }
+  }, {capture:true});
+
+  function beep(){
+    if(!soundOn() || !audioCtx || audioCtx.state !== "running") return;
+    try{
+      const t = audioCtx.currentTime;
+      [[880, 0], [1320, 0.16]].forEach(([f, d])=>{
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = "sine"; o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t + d);
+        g.gain.exponentialRampToValueAtTime(0.18, t + d + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.14);
+        o.connect(g).connect(audioCtx.destination);
+        o.start(t + d); o.stop(t + d + 0.16);
+      });
+    }catch(e){ /* ignore */ }
+  }
+
+  function openTab(view){
+    const btn = document.querySelector(`.tab-btn[data-view="${view}"]`);
+    if(btn && !btn.hidden) btn.click();
+  }
+
+  function showToast(ev){
+    const el = document.createElement("div");
+    el.className = "toast " + (ev.kind || "");
+    el.innerHTML = `<button class="toast-close" aria-label="Закрыть">×</button>
+      <div class="toast-title">${esc(ev.title)}</div>${ev.body ? `<div class="toast-body">${esc(ev.body)}</div>` : ""}`;
+    el.addEventListener("click", (e)=>{
+      el.remove();
+      if(!e.target.closest(".toast-close")) openTab(ev.view || "requests");
+    });
+    toastStack.prepend(el);
+    while(toastStack.children.length > 4) toastStack.lastChild.remove();
+    setTimeout(()=> el.remove(), 15000);
+  }
+
+  function systemNotify(ev){
+    try{
+      if(!("Notification" in window) || Notification.permission !== "granted" || !document.hidden) return;
+      const n = new Notification(ev.title, {body: ev.body || "", tag: ev.tag || ev.title});
+      n.onclick = ()=>{ window.focus(); openTab(ev.view || "requests"); n.close(); };
+    }catch(e){ /* ignore */ }
+  }
+
+  function notifyAll(events){
+    if(!events.length) return;
+    events.slice(0, 6).forEach(ev => { showToast(ev); systemNotify(ev); });
+    beep();
+    if(document.hidden){
+      unseen += events.length;
+      document.title = `(${unseen}) ${baseTitle}`;
+    }
+  }
+  document.addEventListener("visibilitychange", ()=>{
+    if(!document.hidden){ unseen = 0; document.title = baseTitle; }
+  });
+
+  const itemsShort = r => r.items.map(it => `${it.code} × ${it.qty}`).join(", ");
+
+  function detectRequestEvents(list){
+    const events = [];
+    if(!currentUser) return events;
+    const me = currentUser.name;
+    if(lastReqSnapshot){
+      const now = new Map(list.map(r => [r.id, r]));
+      if(isWarehouse()){
+        list.forEach(r=>{
+          const old = lastReqSnapshot.get(r.id);
+          if(!old && r.manager !== me){
+            events.push({
+              title: r.status === ST_DIRECT ? `🏭 Прямая отгрузка с завода №${r.id}` : `🆕 Новая заявка №${r.id}`,
+              body: `${r.manager}: ${itemsShort(r)}${r.realized === "Нет" ? " · ⚠️ без реализации" : ""}`,
+              kind: r.realized === "Нет" ? "warn" : "", view: r.realized === "Нет" && r.status === ST_DIRECT ? "unrealized" : "requests",
+              tag: "req" + r.id
+            });
+          } else if(old && old.status !== r.status && r.status === ST_CANCELLED && r.changedBy !== me){
+            events.push({title: `❌ Заявка №${r.id} отменена`, body: `${r.changedBy || r.manager}: ${itemsShort(r)}`, kind: "bad", tag: "req" + r.id});
+          }
+        });
+      } else {
+        list.filter(r => r.manager === me).forEach(r=>{
+          const old = lastReqSnapshot.get(r.id);
+          if(!old) return;
+          if(old.status !== r.status && r.changedBy !== me){
+            const kind = r.status === ST_CANCELLED ? "bad" : (r.status === ST_READY || r.status === ST_SHIPPED ? "ok" : "");
+            events.push({title: `Заявка №${r.id}: ${r.status}`, body: `${itemsShort(r)}${r.changedBy ? " · " + r.changedBy : ""}`, kind, tag: "req" + r.id});
+          }
+          if(!old.realizedAt && r.realizedAt){
+            events.push({title: `🧾 №${r.id}: реализация проведена`, body: r.realizedBy ? "Отметил: " + r.realizedBy : "", kind: "ok", tag: "real" + r.id});
+          }
+        });
+        lastReqSnapshot.forEach((old, id)=>{
+          if(old.manager === me && !now.has(id)) events.push({title: `🗑 Заявка №${id} удалена`, body: old.items, kind: "bad", tag: "req" + id});
+        });
+      }
+    }
+    lastReqSnapshot = new Map(list.map(r => [r.id, {status:r.status, realizedAt:r.realizedAt, manager:r.manager, items:itemsShort(r)}]));
+    return events;
+  }
+
+  function renderBrowserNotif(){
+    const host = document.getElementById("browserNotifBody");
+    const supported = "Notification" in window;
+    const perm = supported ? Notification.permission : "unsupported";
+    let sys;
+    if(perm === "granted") sys = `<span class="ok">включены ✓</span>`;
+    else if(perm === "denied") sys = `<span class="bad">заблокированы браузером</span>`;
+    else if(perm === "unsupported") sys = `<span>не поддерживаются этим браузером</span>`;
+    else sys = `<button class="small-btn" id="bnEnable">Включить</button>`;
+    host.innerHTML = `
+      <div class="notif-row"><span>Карточки внизу экрана</span><span class="ok">всегда включены ✓</span></div>
+      <div class="notif-row"><span>Уведомления Windows, когда вкладка свёрнута</span>${sys}</div>
+      ${perm === "denied" ? `<p class="modal-note" style="margin:-4px 0 10px">Чтобы включить: нажми на значок слева от адреса сайта → «Уведомления» → «Разрешить», затем обнови страницу.</p>` : ""}
+      <div class="notif-row"><span>Звуковой сигнал</span>
+        <label class="reserve-checkbox-label" style="cursor:pointer"><input type="checkbox" id="bnSound" ${soundOn() ? "checked" : ""} style="accent-color:var(--accent)"> вкл.</label></div>
+      <div class="notif-row"><span></span><button class="small-btn" id="bnTest">Показать пример</button></div>`;
+    document.getElementById("bnEnable")?.addEventListener("click", async ()=>{
+      try{ await Notification.requestPermission(); }catch(e){ /* ignore */ }
+      renderBrowserNotif();
+    });
+    document.getElementById("bnSound").addEventListener("change", e => setSound(e.target.checked));
+    document.getElementById("bnTest").addEventListener("click", ()=>{
+      const ev = {title: "🔔 Так будут выглядеть уведомления", body: isWarehouse() ? "Например: «🆕 Новая заявка №12 — Алия: CI × 20»" : "Например: «Заявка №12: Готова к отгрузке»", kind: "ok"};
+      showToast(ev); beep();
+      try{ if("Notification" in window && Notification.permission === "granted") new Notification(ev.title, {body: ev.body}); }catch(e){ /* ignore */ }
+    });
+  }
 
   // ---------- Auth ----------
   const PIN_LENGTH = 4;
@@ -2133,7 +2316,7 @@
     document.querySelectorAll("[data-warehouse-only]").forEach(el => { el.hidden = !wh; });
     syncAll(false);
     refreshTgStatus();
-    if(!refreshTimer) refreshTimer = setInterval(()=>syncAll(false), 3*60*1000);
+    if(!refreshTimer) refreshTimer = setInterval(()=>syncAll(false), 60*1000);
   }
 
   document.getElementById("logoutBtn").addEventListener("click", ()=>{
