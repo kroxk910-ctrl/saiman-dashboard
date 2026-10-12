@@ -630,6 +630,8 @@
 
   .item-block{margin-bottom:8px;}
   .item-block .item-row{margin-bottom:4px;}
+  .kit-code{color:var(--accent); font-weight:600;}
+  .kit-parts{font-size:11px; color:var(--ink-faint); padding-left:20px;}
   .item-hint{font-size:11.5px; color:var(--ink-faint); padding-left:2px; min-height:15px;}
   .item-hint.bad{color:var(--danger);}
   .item-hint.good{color:var(--ok);}
@@ -1143,7 +1145,8 @@
         code, codeKey: normCode(code), qty: parseNum(r[4]), status:(r[5]||"").trim(),
         comment:(r[6]||"").trim(), shipDate:(r[7]||"").trim(), changedBy:(r[8]||"").trim(),
         realized:(r[9]||"").trim(), realizedBy:(r[10]||"").trim(), realizedAt:(r[11]||"").trim(),
-        type:(r[12]||"").trim() === TYPE_FACTORY ? TYPE_FACTORY : "Склад"
+        type:(r[12]||"").trim() === TYPE_FACTORY ? TYPE_FACTORY : "Склад",
+        kit:(r[13]||"").trim()
       });
     }
     return out;
@@ -1157,9 +1160,23 @@
                        shipDate:r.shipDate, changedBy:r.changedBy, realized:r.realized,
                        realizedBy:r.realizedBy, realizedAt:r.realizedAt, type:r.type, items:[]});
       }
-      map.get(r.id).items.push({code:r.code, codeKey:r.codeKey, qty:r.qty});
+      map.get(r.id).items.push({code:r.code, codeKey:r.codeKey, qty:r.qty, kit:r.kit});
     });
-    return Array.from(map.values());
+    const list = Array.from(map.values());
+    list.forEach(req => { req.lines = displayLines(req.items); });
+    return list;
+  }
+
+  /** Как показывать позиции: детали собираемого комплекта («Комплект» = «IC/компл × 2») — одной строкой. */
+  function displayLines(items){
+    const out = [], idx = {};
+    items.forEach(it => {
+      const m = (it.kit || "").match(/^(.+?)\s*×\s*(\d+)$/);
+      if(!m){ out.push({code: it.code, qty: it.qty}); return; }
+      if(!(it.kit in idx)){ idx[it.kit] = out.length; out.push({code: m[1], qty: Number(m[2]), kit: true, parts: []}); }
+      out[idx[it.kit]].parts.push(it);
+    });
+    return out;
   }
 
   // ---------- Parse: RECEIPTS (лист «Посадки») ----------
@@ -1341,6 +1358,13 @@
   }
 
   // ---------- Render: REQUESTS ----------
+  function lineHtml(it){
+    if(!it.kit) return `<div class="req-item"><span class="idm-trigger idm-clickable" data-code="${esc(it.code)}">${esc(it.code)}</span> <span class="q">× ${fmtNum(it.qty)}</span></div>`;
+    return `<div class="req-item">🧩 <span class="kit-code">${esc(it.code)}</span> <span class="q">× ${fmtNum(it.qty)}</span>
+      <div class="kit-parts">собрать: ${it.parts.map(p => `<span class="idm-trigger idm-clickable" data-code="${esc(p.code)}">${esc(p.code)}</span>${p.qty !== it.qty ? " ×" + fmtNum(p.qty) : ""}`).join(" + ")}</div></div>`;
+  }
+  const linesText = r => (r.lines || r.items).map(it => `${it.kit ? "🧩 " : ""}${it.code} × ${it.qty}`).join(", ");
+
   function visibleRequests(){
     if(!currentUser) return [];
     return isWarehouse() ? requests : requests.filter(r => r.manager === currentUser.name);
@@ -1381,7 +1405,7 @@
       String(r.id) === term.replace("№","") ||
       r.manager.toLowerCase().includes(term) ||
       r.comment.toLowerCase().includes(term) ||
-      r.items.some(it => it.code.toLowerCase().includes(term))
+      (r.lines || r.items).concat(r.items).some(it => it.code.toLowerCase().includes(term))
     );
 
     rows.sort((a,b)=>{
@@ -1427,8 +1451,7 @@
       else if(req.status !== ST_NEW && req.changedBy) meta = esc(req.changedBy);
       html += `<tr class="${req.status === ST_CANCELLED ? 'old-row' : ''}">
         <td class="req-id">№${req.id}</td>
-        <td><div class="req-items">${req.items.map(it =>
-          `<div class="req-item"><span class="idm-trigger idm-clickable" data-code="${esc(it.code)}">${esc(it.code)}</span> <span class="q">× ${fmtNum(it.qty)}</span></div>`).join("")}</div></td>
+        <td><div class="req-items">${req.lines.map(lineHtml).join("")}</div></td>
         <td>${badge}${isUnrealized(req) ? `<span class="real-tag">без реализации</span>` : ""}${meta ? `<div class="req-meta">${meta}</div>` : ""}${isLocked(req) ? `<div class="req-meta">🔒 изменить или удалить можно после реализации</div>` : ""}${req.realized === "Нет" && req.realizedAt ? `<div class="req-meta">реализация проведена ${esc(req.realizedAt)}</div>` : ""}</td>
         <td>${esc(req.manager)}</td>
         <td>${esc(req.date)}</td>
@@ -1509,7 +1532,7 @@
   }
 
   async function changeRequestStatus(req, status, btn){
-    const label = req.items.map(it => `${it.code} × ${it.qty}`).join(", ");
+    const label = linesText(req);
     if(status === ST_CANCELLED && !confirm(`Отменить заявку №${req.id}?\n${label}`)) return;
     const cell = btn.parentElement;
     const original = cell.innerHTML;
@@ -1525,7 +1548,7 @@
   }
 
   async function removeRequest(req, btn){
-    const label = req.items.map(it => `${it.code} × ${it.qty}`).join(", ");
+    const label = linesText(req);
     if(!confirm(`Удалить заявку №${req.id} насовсем?\n${label}\n\nЕсли заявку просто не нужно выполнять — лучше поставь «${ST_CANCELLED}».`)) return;
     const row = btn.closest("tr");
     row.style.opacity = "0.4";
@@ -1610,8 +1633,7 @@
     rows.forEach(req=>{
       html += `<tr>
         <td class="req-id">№${req.id}</td>
-        <td><div class="req-items">${req.items.map(it =>
-          `<div class="req-item"><span class="idm-trigger idm-clickable" data-code="${esc(it.code)}">${esc(it.code)}</span> <span class="q">× ${fmtNum(it.qty)}</span></div>`).join("")}</div></td>
+        <td><div class="req-items">${req.lines.map(lineHtml).join("")}</div></td>
         <td><span class="badge ${statusClass(req.status)}">${esc(req.status)}</span>${req.status === ST_SHIPPED && req.shipDate ? `<div class="req-meta">отгружена ${esc(req.shipDate)}</div>` : ""}</td>
         <td>${esc(req.manager)}</td>
         <td>${esc(req.date)}</td>
@@ -1630,7 +1652,7 @@
   }
 
   async function markRealized(req, btn){
-    const label = req.items.map(it => `${it.code} × ${it.qty}`).join(", ");
+    const label = linesText(req);
     if(!confirm(`Реализация по заявке №${req.id} (${req.manager}) проведена в 1С?\n${label}`)) return;
     btn.disabled = true; btn.textContent = "Сохраняю…";
     try{
@@ -2312,7 +2334,7 @@
     if(!document.hidden){ unseen = 0; document.title = baseTitle; }
   });
 
-  const itemsShort = r => r.items.map(it => `${it.code} × ${it.qty}`).join(", ");
+  const itemsShort = r => linesText(r);
 
   function detectRequestEvents(list){
     const events = [];
