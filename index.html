@@ -404,6 +404,7 @@
   .ro-pri{white-space:nowrap; font-size:12px;}
   .ro-src{font-size:11px; color:var(--ink-faint); margin-top:2px;}
   .ro-short{color:var(--wait);}
+  .age-bad{color:var(--danger); font-weight:600;} .age-warn{color:var(--wait);}
   .ro-pri.urgent{color:var(--danger);} .ro-pri.soon{color:var(--wait);}
   @media (max-width: 760px){ .an-grid{grid-template-columns:1fr;} }
 
@@ -1941,7 +1942,11 @@
       html += `<tr>
         <td class="req-id">№${req.id}</td>
         <td><div class="req-items">${req.lines.map(lineHtml).join("")}</div></td>
-        <td><span class="badge ${statusClass(req.status)}">${esc(req.status)}</span>${req.status === ST_SHIPPED && req.shipDate ? `<div class="req-meta">отгружена ${esc(req.shipDate)}</div>` : ""}</td>
+        <td><span class="badge ${statusClass(req.status)}">${esc(req.status)}</span>${(() => {
+          if(!(req.status === ST_SHIPPED || req.status === ST_DIRECT) || !req.shipDate) return "";
+          const age = Math.max(0, daysBetween(dateKey(req.shipDate), todayKey()));
+          return `<div class="req-meta">отгружена ${esc(req.shipDate)} · <span class="${age > 3 ? "age-bad" : age > 1 ? "age-warn" : ""}">${age === 0 ? "сегодня" : age + " дн. без реализации"}</span></div>`;
+        })()}</td>
         <td>${esc(req.manager)}</td>
         <td>${esc(req.date)}</td>
         <td>${esc(req.comment) || `<span class="dash">—</span>`}</td>
