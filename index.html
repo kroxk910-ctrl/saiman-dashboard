@@ -1336,13 +1336,18 @@
     return isWarehouse() ? requests : requests.filter(r => r.manager === currentUser.name);
   }
 
+  // Отгружено без реализации и реализацию ещё не отметили — заявку менять/удалять нельзя (то же правило на сервере).
+  const isLocked = r => (r.status === ST_SHIPPED || r.status === ST_DIRECT) && r.realized === "Нет" && !r.realizedAt;
+
   function requestActions(req){
     if(!currentUser) return [];
+    if(isLocked(req)) return [];
     const factory = req.type === TYPE_FACTORY;
+    const shipped = req.status === ST_SHIPPED || req.status === ST_DIRECT;
     if(isWarehouse()){
       const allowed = factory ? [ST_DIRECT, ST_CANCELLED] : ALL_STATUSES.filter(s => s !== ST_DIRECT);
       return allowed.filter(s => s !== req.status).map(s => ({type:"status", status:s, label:s}))
-        .concat([{type:"delete", label:"Удалить заявку"}]);
+        .concat(shipped ? [] : [{type:"delete", label:"Удалить заявку"}]);
     }
     if(req.manager === currentUser.name && (req.status === ST_NEW || req.status === ST_DIRECT)){
       return [{type:"status", status:ST_CANCELLED, label:"Отменить заявку", danger:true}];
@@ -1414,7 +1419,7 @@
         <td class="req-id">№${req.id}</td>
         <td><div class="req-items">${req.items.map(it =>
           `<div class="req-item"><span class="idm-trigger idm-clickable" data-code="${esc(it.code)}">${esc(it.code)}</span> <span class="q">× ${fmtNum(it.qty)}</span></div>`).join("")}</div></td>
-        <td>${badge}${isUnrealized(req) ? `<span class="real-tag">без реализации</span>` : ""}${meta ? `<div class="req-meta">${meta}</div>` : ""}${req.realized === "Нет" && req.realizedAt ? `<div class="req-meta">реализация проведена ${esc(req.realizedAt)}</div>` : ""}</td>
+        <td>${badge}${isUnrealized(req) ? `<span class="real-tag">без реализации</span>` : ""}${meta ? `<div class="req-meta">${meta}</div>` : ""}${isLocked(req) ? `<div class="req-meta">🔒 изменить или удалить можно после реализации</div>` : ""}${req.realized === "Нет" && req.realizedAt ? `<div class="req-meta">реализация проведена ${esc(req.realizedAt)}</div>` : ""}</td>
         <td>${esc(req.manager)}</td>
         <td>${esc(req.date)}</td>
         <td>${esc(req.comment) || "—"}</td>
