@@ -1023,10 +1023,13 @@
 
   function normRole(raw){
     const r = String(raw || "").toLowerCase();
-    if(r.includes("завед") || r.includes("склад") || r.includes("админ") || r.includes("admin")) return "warehouse";
+    if(r.includes("админ") || r.includes("admin")) return "admin";
+    if(r.includes("завед") || r.includes("склад")) return "warehouse";
     return "manager";
   }
-  const isWarehouse = () => currentUser && currentUser.roleKey === "warehouse";
+  // Права склада есть у заведующего и у админа; админ дополнительно видит служебные функции.
+  const isWarehouse = () => !!currentUser && (currentUser.roleKey === "warehouse" || currentUser.roleKey === "admin");
+  const isAdmin = () => !!currentUser && currentUser.roleKey === "admin";
 
   function showMsg(el, text){ el.textContent = text; el.classList.add("show"); }
   function hideMsg(el){ el.textContent = ""; el.classList.remove("show"); }
@@ -2316,9 +2319,10 @@
     document.getElementById("appRoot").classList.remove("app-hidden");
     const wh = isWarehouse();
     document.getElementById("userPill").textContent = currentUser.name;
-    document.getElementById("rolePill").textContent = wh ? "· заведующий складом" : "· менеджер";
+    document.getElementById("rolePill").textContent = isAdmin() ? "· админ" : (wh ? "· заведующий складом" : "· менеджер");
     document.getElementById("requestsTabLabel").textContent = wh ? "Заявки" : "Мои заявки";
     document.querySelectorAll("[data-warehouse-only]").forEach(el => { el.hidden = !wh; });
+    document.querySelectorAll("[data-admin-only]").forEach(el => { el.hidden = !isAdmin(); });
     syncAll(false);
     refreshTgStatus();
     if(!refreshTimer) refreshTimer = setInterval(()=>syncAll(false), 60*1000);
