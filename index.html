@@ -831,6 +831,68 @@
     .status-menu{min-width:200px;}
     .status-menu button{padding:12px 16px; font-size:14px;}
   }
+
+  /* ======================= Движение (минимально, только где помогает) ======================= */
+  .tabs{position:relative;}
+  .tab-ink{position:absolute; bottom:-1px; left:0; height:2px; width:0; background:var(--accent); border-radius:2px 2px 0 0;
+           transition:transform .28s cubic-bezier(.2,.8,.2,1), width .28s cubic-bezier(.2,.8,.2,1); pointer-events:none;}
+  .tabs.has-ink .tab-btn.active{border-bottom-color:transparent;}
+  .brand-mark{background:linear-gradient(120deg, var(--accent) 0%, #8fd0ff 50%, var(--accent) 100%); background-size:200% 100%;
+              -webkit-background-clip:text; background-clip:text; color:transparent;}
+  tbody tr{transition:background-color .12s ease;}
+  .filter-chip, .refresh-btn, .badge-btn, .ok-btn, .small-btn, .row-del, .item-remove{transition:background-color .15s ease, border-color .15s ease, color .15s ease, transform .12s ease;}
+  .filter-chip:active, .refresh-btn:active, .small-btn:active, .ok-btn:active{transform:scale(0.97);}
+  .stat{transition:background-color .2s ease;}
+  .an-card, .table-wrap, .stats{transition:border-color .2s ease;}
+  .an-card:hover{border-color:#343b42;}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:6px;}
+  .kbd-hint{font-family:var(--mono); font-size:10.5px; color:var(--ink-faint); border:1px solid var(--line); border-radius:4px; padding:0 5px; margin-left:6px;}
+
+  @media (prefers-reduced-motion: no-preference){
+    .view.active{animation:viewIn .22s ease both;}
+    @keyframes viewIn{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;}}
+    .view.entering tbody tr:not(.detail-row){animation:rowIn .28s ease both;}
+    .view.entering tbody tr:nth-child(2){animation-delay:.02s} .view.entering tbody tr:nth-child(3){animation-delay:.04s}
+    .view.entering tbody tr:nth-child(4){animation-delay:.06s} .view.entering tbody tr:nth-child(5){animation-delay:.08s}
+    .view.entering tbody tr:nth-child(6){animation-delay:.10s} .view.entering tbody tr:nth-child(7){animation-delay:.12s}
+    .view.entering tbody tr:nth-child(8){animation-delay:.14s} .view.entering tbody tr:nth-child(n+9){animation-delay:.16s}
+    @keyframes rowIn{from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;}}
+
+    .hbar-fill, .vbar-fill{transform-origin:left center;}
+    .vbar-fill{transform-origin:center bottom;}
+    :is(.entering, .an-anim) .hbar-fill{animation:growX .55s cubic-bezier(.2,.8,.2,1) both;}
+    :is(.entering, .an-anim) .hbar:nth-child(2) .hbar-fill{animation-delay:.03s} :is(.entering, .an-anim) .hbar:nth-child(3) .hbar-fill{animation-delay:.06s}
+    :is(.entering, .an-anim) .hbar:nth-child(4) .hbar-fill{animation-delay:.09s} :is(.entering, .an-anim) .hbar:nth-child(5) .hbar-fill{animation-delay:.12s}
+    :is(.entering, .an-anim) .hbar:nth-child(n+6) .hbar-fill{animation-delay:.15s}
+    @keyframes growX{from{transform:scaleX(0);} to{transform:scaleX(1);}}
+    :is(.entering, .an-anim) .vbar-fill{animation:growY .55s cubic-bezier(.2,.8,.2,1) both;}
+    @keyframes growY{from{transform:scaleY(0);} to{transform:scaleY(1);}}
+
+    .flash-up{animation:flashUp 1.8s ease;}  .flash-down{animation:flashDown 1.8s ease;}
+    @keyframes flashUp{0%,30%{background-color:rgba(95,184,140,.16);} 100%{background-color:transparent;}}
+    @keyframes flashDown{0%,30%{background-color:rgba(217,154,61,.16);} 100%{background-color:transparent;}}
+    .stat-value.bump{animation:bump .45s ease;}
+    @keyframes bump{0%{transform:none;} 35%{transform:translateY(-2px); color:var(--accent-hover);} 100%{transform:none;}}
+
+    .sync-dot.ping{position:relative;}
+    .sync-dot.ping::after{content:""; position:absolute; inset:-1px; border-radius:50%; border:1px solid var(--ok); animation:ping .9s ease-out;}
+    @keyframes ping{from{transform:scale(1); opacity:.9;} to{transform:scale(3.2); opacity:0;}}
+    .brand-mark{animation:shine 6s ease-in-out infinite;}
+    @keyframes shine{0%,70%{background-position:100% 0;} 100%{background-position:-100% 0;}}
+    .refresh-btn.spinning::first-letter{display:inline-block;}
+
+    @media (min-width:721px){
+      .modal-overlay.open{animation:fadeIn .16s ease both;}
+      .modal-overlay.open .modal-box{animation:popIn .22s cubic-bezier(.2,.8,.2,1) both;}
+      @keyframes fadeIn{from{opacity:0;} to{opacity:1;}}
+      @keyframes popIn{from{opacity:0; transform:translateY(8px) scale(.985);} to{opacity:1; transform:none;}}
+      .new-order-btn:hover, .modal-btn.submit:hover:not(:disabled){transform:translateY(-1px); box-shadow:0 6px 18px rgba(74,158,218,.25);}
+      .new-order-btn:active, .modal-btn.submit:active{transform:translateY(0) scale(.98); box-shadow:none;}
+      .status-menu{animation:menuIn .14s ease both; transform-origin:top left;}
+      @keyframes menuIn{from{opacity:0; transform:translateY(-4px) scale(.98);} to{opacity:1; transform:none;}}
+      .badge-btn:hover{filter:brightness(1.15);}
+    }
+  }
 </style>
 </head>
 <body>
@@ -2027,7 +2089,10 @@
     document.getElementById("syncPill").classList.toggle("has-error", state === "error");
     if(state === "loading"){ dot.classList.add("spin"); text.textContent = msg || "Обновляется…"; }
     else if(state === "error"){ dot.classList.add("err"); text.textContent = msg || "Ошибка обновления"; }
-    else { text.textContent = msg || "Данные актуальны"; }
+    else {
+      text.textContent = msg || "Данные актуальны";
+      if(state === "ok"){ dot.classList.remove("ping"); void dot.offsetWidth; dot.classList.add("ping"); setTimeout(() => dot.classList.remove("ping"), 950); }
+    }
   }
 
   async function fetchSheet(gid){
@@ -2344,12 +2409,68 @@
 
   document.querySelectorAll("[data-anperiod]").forEach(b => b.addEventListener("click", () => {
     document.querySelectorAll("[data-anperiod]").forEach(x => x.classList.remove("active"));
-    b.classList.add("active"); anPeriod = b.dataset.anperiod; renderAnalytics();
+    b.classList.add("active"); anPeriod = b.dataset.anperiod; animateAnalytics(); renderAnalytics();
   }));
-  document.getElementById("anSection").addEventListener("change", renderAnalytics);
-  document.getElementById("anDirect").addEventListener("change", renderAnalytics);
+  function animateAnalytics(){
+    const v = document.getElementById("view-analytics");
+    v.classList.add("an-anim"); clearTimeout(animateAnalytics.t); animateAnalytics.t = setTimeout(() => v.classList.remove("an-anim"), 800);
+  }
+  document.getElementById("anSection").addEventListener("change", () => { animateAnalytics(); renderAnalytics(); });
+  document.getElementById("anDirect").addEventListener("change", () => { animateAnalytics(); renderAnalytics(); });
+
+
+  // ---------- Движение: полоска под активной вкладкой, появление вида, подсветка изменений ----------
+  const tabsEl = document.querySelector(".tabs");
+  const tabInk = document.createElement("span"); tabInk.className = "tab-ink"; tabsEl.appendChild(tabInk);
+  function moveInk(){
+    const a = tabsEl.querySelector(".tab-btn.active");
+    if(!a || a.hidden || !a.offsetWidth){ tabInk.style.width = "0"; return; }
+    tabsEl.classList.add("has-ink");
+    tabInk.style.width = a.offsetWidth + "px";
+    tabInk.style.transform = `translateX(${a.offsetLeft}px)`;
+  }
+  window.addEventListener("resize", () => requestAnimationFrame(moveInk));
+  document.querySelectorAll(".tab-btn").forEach(b => b.addEventListener("click", () => {
+    requestAnimationFrame(moveInk);
+    const v = document.getElementById("view-" + b.dataset.view);
+    if(v){ v.classList.add("entering"); setTimeout(() => v.classList.remove("entering"), 600); }
+  }));
+
+  // «/» — к поиску на текущей вкладке
+  document.addEventListener("keydown", e => {
+    if(e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target; if(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+    if(document.querySelector(".modal-overlay.open")) return;
+    const box = document.querySelector(".view.active .search-box input");
+    if(box){ e.preventDefault(); box.focus(); box.select(); }
+  });
+  document.querySelectorAll(".search-box input").forEach(inp => { if(!inp.title) inp.title = "Быстрый поиск: клавиша /"; });
+
+  let prevAvailForFlash = null, statsReady = false;
+  function flashStockChanges(prev){
+    if(!prev) return;
+    document.querySelectorAll("#stockTableHost tr.expandable-row").forEach(tr => {
+      const codeTd = tr.querySelector("td.code"); if(!codeTd) return;
+      const code = normCode(codeTd.textContent); if(!code || !(code in prev) || !availMap[code]) return;
+      const was = prev[code].available, now = availMap[code].available;
+      if(was === now) return;
+      tr.classList.remove("flash-up", "flash-down"); void tr.offsetWidth;
+      tr.classList.add(now > was ? "flash-up" : "flash-down");
+    });
+  }
+  new MutationObserver(muts => {
+    if(!statsReady) return;
+    muts.forEach(m => {
+      const el = m.target.nodeType === 3 ? m.target.parentElement : m.target;
+      if(!el || !el.classList || !el.classList.contains("stat-value")) return;
+      const before = m.type === "characterData" ? m.oldValue : [...m.removedNodes].map(n => n.textContent).join("");
+      if(before === el.textContent) return;
+      el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump");
+    });
+  }).observe(document.getElementById("appRoot"), {subtree: true, characterData: true, characterDataOldValue: true, childList: true});
 
   function renderAll(){
+    prevAvailForFlash = statsReady ? availMap : null;
     availMap = computeAvailability();
     renderSnapshotBar();
     renderStockStats(); renderStock();
@@ -2361,6 +2482,9 @@
     fillCodeDatalist();
     requestEditor.refresh();
     receiptEditor.refresh();
+    flashStockChanges(prevAvailForFlash);
+    requestAnimationFrame(moveInk);
+    setTimeout(() => { statsReady = true; }, 0);
   }
 
   let opsError = "";
