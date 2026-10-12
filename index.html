@@ -725,6 +725,7 @@
       <button class="filter-chip" data-reqfilter="В подготовке">В подготовке</button>
       <button class="filter-chip" data-reqfilter="Готова к отгрузке">Готовы</button>
       <button class="filter-chip" data-reqfilter="Отгружена">Отгружены</button>
+      <button class="filter-chip" data-reqfilter="Прямая с завода">С завода</button>
       <button class="filter-chip" data-reqfilter="Отменена">Отменены</button>
       <button class="filter-chip" data-reqfilter="all">Все</button>
       <div class="toolbar-spacer"></div>
@@ -804,10 +805,18 @@
 <div class="modal-overlay" id="requestModalOverlay">
   <div class="modal-box modal-box-wide">
     <div class="modal-header">
-      <span class="modal-title">Новая заявка на склад</span>
+      <span class="modal-title" id="requestModalTitle">Новая заявка на склад</span>
       <button class="modal-close" data-close>×</button>
     </div>
-    <p class="modal-note">Склад подготовит товар и поставит статус «Готова к отгрузке». Заказать больше доступного остатка нельзя.</p>
+    <p class="modal-note" id="requestModalNote"></p>
+
+    <div class="form-field">
+      <label>Откуда отгрузка</label>
+      <div class="radio-group">
+        <label class="radio-option"><input type="radio" name="source" value="stock" checked><span>Со склада</span></label>
+        <label class="radio-option"><input type="radio" name="source" value="factory"><span>Напрямую с завода</span></label>
+      </div>
+    </div>
 
     <div class="form-field">
       <label>Менеджер</label>
@@ -916,7 +925,9 @@
 
   const ST_NEW = "Новая", ST_PREP = "В подготовке", ST_READY = "Готова к отгрузке",
         ST_SHIPPED = "Отгружена", ST_CANCELLED = "Отменена";
-  const ALL_STATUSES = [ST_NEW, ST_PREP, ST_READY, ST_SHIPPED, ST_CANCELLED];
+  const ST_DIRECT = "Прямая с завода";   // отгрузка с завода клиенту мимо склада — остаток не трогает
+  const ALL_STATUSES = [ST_NEW, ST_PREP, ST_READY, ST_SHIPPED, ST_CANCELLED, ST_DIRECT];
+  const TYPE_FACTORY = "С завода";
   const HOLD_STATUSES = [ST_NEW, ST_PREP, ST_READY];
 
   function csvUrl(gid){
@@ -1095,7 +1106,8 @@
         sheetRow: i + 1, id, date:(r[1]||"").trim(), manager:(r[2]||"").trim(),
         code, codeKey: normCode(code), qty: parseNum(r[4]), status:(r[5]||"").trim(),
         comment:(r[6]||"").trim(), shipDate:(r[7]||"").trim(), changedBy:(r[8]||"").trim(),
-        realized:(r[9]||"").trim(), realizedBy:(r[10]||"").trim(), realizedAt:(r[11]||"").trim()
+        realized:(r[9]||"").trim(), realizedBy:(r[10]||"").trim(), realizedAt:(r[11]||"").trim(),
+        type:(r[12]||"").trim() === TYPE_FACTORY ? TYPE_FACTORY : "Склад"
       });
     }
     return out;
@@ -1107,7 +1119,7 @@
       if(!map.has(r.id)){
         map.set(r.id, {id:r.id, date:r.date, manager:r.manager, status:r.status, comment:r.comment,
                        shipDate:r.shipDate, changedBy:r.changedBy, realized:r.realized,
-                       realizedBy:r.realizedBy, realizedAt:r.realizedAt, items:[]});
+                       realizedBy:r.realizedBy, realizedAt:r.realizedAt, type:r.type, items:[]});
       }
       map.get(r.id).items.push({code:r.code, codeKey:r.codeKey, qty:r.qty});
     });
@@ -1177,6 +1189,7 @@
       case ST_READY: return "ready";
       case ST_SHIPPED: return "done";
       case ST_CANCELLED: return "cancelled";
+      case ST_DIRECT: return "stocked";
       default: return "other";
     }
   }
@@ -1293,11 +1306,13 @@
 
   function requestActions(req){
     if(!currentUser) return [];
+    const factory = req.type === TYPE_FACTORY;
     if(isWarehouse()){
-      return ALL_STATUSES.filter(s => s !== req.status).map(s => ({type:"status", status:s, label:s}))
+      const allowed = factory ? [ST_DIRECT, ST_CANCELLED] : ALL_STATUSES.filter(s => s !== ST_DIRECT);
+      return allowed.filter(s => s !== req.status).map(s => ({type:"status", status:s, label:s}))
         .concat([{type:"delete", label:"Удалить заявку"}]);
     }
-    if(req.manager === currentUser.name && req.status === ST_NEW){
+    if(req.manager === currentUser.name && (req.status === ST_NEW || req.status === ST_DIRECT)){
       return [{type:"status", status:ST_CANCELLED, label:"Отменить заявку", danger:true}];
     }
     return [];
@@ -1360,7 +1375,8 @@
         ? `<button type="button" class="badge badge-btn ${c}" data-req="${req.id}">${esc(req.status)} <span class="caret">▾</span></button>`
         : `<span class="badge ${c}">${esc(req.status)}</span>`;
       let meta = "";
-      if(req.status === ST_SHIPPED && req.shipDate) meta = `отгружена ${esc(req.shipDate)}${req.changedBy ? " · " + esc(req.changedBy) : ""}`;
+      if(req.status === ST_DIRECT) meta = "мимо склада, остаток не трогает";
+      else if(req.status === ST_SHIPPED && req.shipDate) meta = `отгружена ${esc(req.shipDate)}${req.changedBy ? " · " + esc(req.changedBy) : ""}`;
       else if(req.status !== ST_NEW && req.changedBy) meta = esc(req.changedBy);
       html += `<tr class="${req.status === ST_CANCELLED ? 'old-row' : ''}">
         <td class="req-id">№${req.id}</td>
@@ -1834,13 +1850,15 @@
   });
 
   // Редактор позиций (код + кол-во) с подсказкой о доступном остатке
-  function createItemsEditor(listEl, addBtn, mode){
+  function createItemsEditor(listEl, addBtn, mode, isDirect){
+    const direct = () => !!(isDirect && isDirect());
     function hintFor(block){
       const h = block.querySelector(".item-hint");
       const code = normCode(block.querySelector(".item-code").value);
       h.className = "item-hint";
       if(!code){ h.textContent = ""; return; }
       const s = stockIndex[code];
+      if(direct()){ h.textContent = (s ? s.name + " · " : "") + "с завода, остаток склада не трогаем"; return; }
       if(!s){ h.textContent = "Такого кода нет в остатках"; h.classList.add("bad"); return; }
       const a = availOf(code);
       if(mode === "request"){
@@ -1893,10 +1911,10 @@
         if(!it.code || !it.qty) return "Заполните код и количество для каждой позиции";
         if(!/^\d+$/.test(it.qty) || Number(it.qty) <= 0) return `Количество для «${it.code}» должно быть целым числом больше нуля`;
         const key = normCode(it.code);
-        if(!stockIndex[key]) return `Кода «${it.code}» нет в остатках`;
+        if(!stockIndex[key] && !direct()) return `Кода «${it.code}» нет в остатках`;
         totals[key] = (totals[key] || 0) + Number(it.qty);
       }
-      if(mode === "request"){
+      if(mode === "request" && !direct()){
         const short = Object.entries(totals).filter(([k,q]) => q > availOf(k))
           .map(([k,q]) => `${stockIndex[k].code} — доступно ${fmtNum(availOf(k))}, нужно ${fmtNum(q)}`);
         if(short.length) return "Не хватает на складе: " + short.join("; ");
@@ -1915,10 +1933,11 @@
     const err = document.getElementById(cfg.error);
     const ok = document.getElementById(cfg.success);
     const submit = document.getElementById(cfg.submit);
+    const labelOf = () => typeof cfg.submitLabel === "function" ? cfg.submitLabel() : cfg.submitLabel;
     function open(){
       cfg.onOpen();
       hideMsg(err); hideMsg(ok);
-      submit.disabled = false; submit.textContent = cfg.submitLabel;
+      submit.disabled = false; submit.textContent = labelOf();
       openOverlay(overlay);
       setTimeout(cfg.focus, 50);
     }
@@ -1934,22 +1953,37 @@
         setTimeout(()=>{ closeOverlay(overlay); syncAll(true); }, 900);
       }catch(e){
         showMsg(err, e.message);
-        submit.disabled = false; submit.textContent = cfg.submitLabel;
+        submit.disabled = false; submit.textContent = labelOf();
       }
     });
     return {open};
   }
 
   // ---------- New request ----------
-  const requestEditor = createItemsEditor(document.getElementById("requestItemsList"), document.getElementById("addRequestItemBtn"), "request");
+  const isDirectRequest = () => (document.querySelector('input[name="source"]:checked') || {}).value === "factory";
+  const requestEditor = createItemsEditor(document.getElementById("requestItemsList"), document.getElementById("addRequestItemBtn"), "request", isDirectRequest);
+  function applyRequestSource(){
+    const direct = isDirectRequest();
+    document.getElementById("requestModalTitle").textContent = direct ? "Прямая отгрузка с завода" : "Новая заявка на склад";
+    document.getElementById("requestModalNote").textContent = direct
+      ? "Товар едет с завода сразу клиенту, мимо склада. Остаток склада не меняется — фиксируем только реализацию."
+      : "Склад подготовит товар и поставит статус «Готова к отгрузке». Заказать больше доступного остатка нельзя.";
+    document.getElementById("requestModalSubmit").textContent = direct ? "Зафиксировать" : "Отправить на склад";
+    requestEditor.refresh();
+  }
+  document.querySelectorAll('input[name="source"]').forEach(i => i.addEventListener("change", ()=>{
+    hideMsg(document.getElementById("requestFormError")); applyRequestSource();
+  }));
   const requestForm = makeFormFlow({
     overlay:"requestModalOverlay", error:"requestFormError", success:"requestFormSuccess", submit:"requestModalSubmit",
-    submitLabel:"Отправить на склад",
+    submitLabel: () => isDirectRequest() ? "Зафиксировать" : "Отправить на склад",
     onOpen(){
       document.getElementById("fldManager").value = currentUser ? currentUser.name : "";
       document.getElementById("fldRequestComment").value = "";
       document.querySelectorAll('input[name="realized"]').forEach(i => { i.checked = false; });
+      document.querySelector('input[name="source"][value="stock"]').checked = true;
       requestEditor.reset();
+      applyRequestSource();
     },
     focus(){ requestEditor.focusFirst(); },
     validate(){
@@ -1962,10 +1996,11 @@
       return api("createRequest", {
         items: requestEditor.collect(),
         comment: document.getElementById("fldRequestComment").value.trim(),
-        realized: document.querySelector('input[name="realized"]:checked').value === "yes"
+        realized: document.querySelector('input[name="realized"]:checked').value === "yes",
+        direct: isDirectRequest()
       });
     },
-    successText(res){ return `Заявка №${res.id} отправлена на склад. Обновляю данные…`; }
+    successText(res){ return isDirectRequest() ? `Прямая отгрузка №${res.id} зафиксирована. Обновляю данные…` : `Заявка №${res.id} отправлена на склад. Обновляю данные…`; }
   });
   document.getElementById("newRequestBtn").addEventListener("click", ()=> requestForm.open());
   document.querySelectorAll('input[name="realized"]').forEach(i => i.addEventListener("change", ()=> hideMsg(document.getElementById("requestFormError"))));
