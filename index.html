@@ -1121,12 +1121,17 @@
   function normRole(raw){
     const r = String(raw || "").toLowerCase();
     if(r.includes("админ") || r.includes("admin")) return "admin";
+    if(r.includes("руковод") || r.includes("директор") || r.includes("director")) return "director";
     if(r.includes("завед") || r.includes("склад")) return "warehouse";
     return "manager";
   }
   // Права склада есть у заведующего и у админа; админ дополнительно видит служебные функции.
   const isWarehouse = () => !!currentUser && (currentUser.roleKey === "warehouse" || currentUser.roleKey === "admin");
   const isAdmin = () => !!currentUser && currentUser.roleKey === "admin";
+  // Руководитель: видит всё (все заявки, без реализации, посадки, аналитику), а действует как менеджер.
+  const isDirector = () => !!currentUser && currentUser.roleKey === "director";
+  const seesAll = () => isWarehouse() || isDirector();
+  const seesAnalytics = () => isAdmin() || isDirector();
 
   function showMsg(el, text){ el.textContent = text; el.classList.add("show"); }
   function hideMsg(el){ el.textContent = ""; el.classList.remove("show"); }
@@ -1461,7 +1466,7 @@
 
   function visibleRequests(){
     if(!currentUser) return [];
-    return isWarehouse() ? requests : requests.filter(r => r.manager === currentUser.name);
+    return seesAll() ? requests : requests.filter(r => r.manager === currentUser.name);
   }
 
   // Отгружено без реализации и реализацию ещё не отметили — заявку менять/удалять нельзя (то же правило на сервере).
@@ -1517,7 +1522,7 @@
     if(opsError && !requestRows.length){ host.innerHTML = opsErrorBox(); wireRetry(host); return; }
     if(rows.length === 0){
       const msg = source.length === 0
-        ? (isWarehouse() ? "Заявок пока нет" : "У вас пока нет заявок — нажмите «+ Новая заявка»")
+        ? (seesAll() ? "Заявок пока нет" : "У вас пока нет заявок — нажмите «+ Новая заявка»")
         : "Ничего не найдено";
       host.innerHTML = `<div class="state-box"><div class="big">${msg}</div></div>`;
       return;
@@ -1732,7 +1737,7 @@
         <td>${esc(req.manager)}</td>
         <td>${esc(req.date)}</td>
         <td>${esc(req.comment) || "—"}</td>
-        <td><button type="button" class="ok-btn" data-real="${req.id}">✓ Реализация проведена</button></td>
+        <td>${isWarehouse() ? `<button type="button" class="ok-btn" data-real="${req.id}">✓ Реализация проведена</button>` : ""}</td>
       </tr>`;
     });
     html += `</tbody></table>`;
@@ -1785,7 +1790,7 @@
         <td class="num">+${fmtNum(r.qty)}</td>
         <td>${esc(r.who)}</td>
         <td>${esc(r.comment) || "—"}</td>
-        <td><button type="button" class="row-del" data-row="${r.sheetRow}" title="Удалить посадку">×</button></td>
+        <td>${isWarehouse() ? `<button type="button" class="row-del" data-row="${r.sheetRow}" title="Удалить посадку">×</button>` : ""}</td>
       </tr>`;
     });
     html += `</tbody></table>`;
@@ -2038,7 +2043,7 @@
   }
 
   function renderAnalytics(){
-    if(!isAdmin()) return;
+    if(!seesAnalytics()) return;
     renderReorder();
     const sel = document.getElementById("anSection");
     const secs = [...new Set(stockRows.filter(r => r.isSection).map(r => r.name))];
@@ -2158,7 +2163,7 @@
   }
 
   function renderReorder(){
-    if(!isAdmin()) return;
+    if(!seesAnalytics()) return;
     const p = reorderPlan(), host = document.getElementById("roHost"), note = document.getElementById("roNote");
     const v = p.settings;
     note.className = "ro-note" + (p.history && p.history < 14 ? " warn" : "");
@@ -2755,10 +2760,11 @@
     document.getElementById("appRoot").classList.remove("app-hidden");
     const wh = isWarehouse();
     document.getElementById("userPill").textContent = currentUser.name;
-    document.getElementById("rolePill").textContent = isAdmin() ? "· админ" : (wh ? "· заведующий складом" : "· менеджер");
-    document.getElementById("requestsTabLabel").textContent = wh ? "Заявки" : "Мои заявки";
-    document.querySelectorAll("[data-warehouse-only]").forEach(el => { el.hidden = !wh; });
-    document.querySelectorAll("[data-admin-only]").forEach(el => { el.hidden = !isAdmin(); });
+    document.getElementById("rolePill").textContent = isAdmin() ? "· админ" : isDirector() ? "· руководитель" : (wh ? "· заведующий складом" : "· менеджер");
+    document.getElementById("requestsTabLabel").textContent = seesAll() ? "Заявки" : "Мои заявки";
+    document.querySelectorAll("[data-warehouse-only]").forEach(el => { el.hidden = !seesAll(); });
+    document.querySelectorAll("[data-admin-only]").forEach(el => { el.hidden = !seesAnalytics(); });
+    document.getElementById("newReceiptBtn").hidden = !wh;
     syncAll(false);
     refreshTgStatus();
     if(!refreshTimer) refreshTimer = setInterval(()=>syncAll(false), 60*1000);
