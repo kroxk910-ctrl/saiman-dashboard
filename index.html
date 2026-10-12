@@ -687,6 +687,150 @@
 
   .idm-breakdown{font-size:12px; color:var(--ink-faint); margin-top:8px; line-height:1.6;}
   .idm-breakdown b{color:var(--ink-dim); font-weight:600; font-family:var(--mono);}
+
+  /* ======================= ТЕЛЕФОН ======================= */
+  .chip-row{display:contents;}
+  @media (max-width:720px){
+    body{font-size:14px;}
+    main{padding:12px 12px calc(16px + env(safe-area-inset-bottom));}
+    footer{padding:10px 12px calc(24px + env(safe-area-inset-bottom)); font-size:11px;}
+
+    /* шапка — одна строка: QMT · имя · иконки */
+    .topbar-inner{flex-direction:row; align-items:center; gap:8px; padding:10px 12px;}
+    .brand{gap:8px; min-width:0; flex:1 1 auto;}
+    .brand-mark{font-size:14px;}
+    .user-pill{font-size:14px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0; border:none;}
+    .role-tag{font-size:11px;}
+    .status-cluster{width:auto; flex-wrap:nowrap; gap:6px; flex:0 0 auto;}
+    .sync-pill{padding:0; border:none; background:none; width:30px; height:34px; justify-content:center;}
+    .sync-pill #syncText{display:none;}
+    .sync-dot{width:9px; height:9px;}
+    .sync-dot.err + #syncText{display:none;}
+    #tgBtn, #refreshBtn, #logoutBtn, #logoutBtnM{font-size:0 !important; width:38px; height:38px; padding:0 !important; display:inline-flex; align-items:center; justify-content:center; border-radius:10px; flex-shrink:0;}
+    #tgBtn::before{content:"🔔"; font-size:17px;}
+    #refreshBtn::before{content:"↻"; font-size:19px; line-height:1;}
+    #logoutBtnM::before{content:"⏻"; font-size:16px; line-height:1;}
+    .brand #logoutBtn{display:none;}
+    .mobile-logout{display:inline-flex !important;}
+
+    .tabs{padding:0 12px; scrollbar-width:none; scroll-snap-type:x proximity;}
+    .tabs::-webkit-scrollbar{display:none;}
+    .tab-btn{margin-right:16px; font-size:14px; padding:11px 2px 10px; scroll-snap-align:start;}
+
+    /* ошибка обновления — показываем текстом даже на телефоне */
+    .sync-pill.has-error{width:auto; padding:0 4px;}
+    .sync-pill.has-error #syncText{display:inline; font-size:12px; color:var(--danger);}
+
+    /* статистика компактнее */
+    .stats{grid-template-columns:repeat(2,1fr); margin-bottom:12px;}
+    .stat{padding:9px 12px;}
+    .stat-label{font-size:10px;}
+    .stat-value{font-size:17px;}
+
+    /* фильтры — одна строка с прокруткой */
+    .chip-row{display:flex; gap:6px; overflow-x:auto; flex:1 1 100%; order:2; scrollbar-width:none; margin:0 -12px; padding:0 12px 2px;}
+    .chip-row::-webkit-scrollbar{display:none;}
+    .chip-row .filter-chip{flex:0 0 auto; order:0; padding:8px 12px; font-size:13px; white-space:nowrap;}
+    .new-order-btn{padding:12px; font-size:15px; border-radius:10px;}
+
+    /* iPhone не приближает экран, если шрифт в полях ≥ 16px */
+    input, select, textarea, .search-box input, .form-field input, .form-field textarea{font-size:16px !important;}
+    .search-box input{padding:11px 12px 11px 34px;}
+
+    /* окна — снизу, как в приложениях */
+    .modal-overlay{padding:0; align-items:flex-end;}
+    .modal-box{max-width:none; border-radius:16px 16px 0 0; padding:20px 16px calc(20px + env(safe-area-inset-bottom));
+               max-height:92vh; overflow-y:auto; -webkit-overflow-scrolling:touch; animation:sheetUp .2s ease;}
+    @keyframes sheetUp{from{transform:translateY(40px); opacity:.6;} to{transform:none; opacity:1;}}
+    .modal-btn{padding:13px; font-size:15px;}
+    .item-row input{height:44px;}
+    .item-remove{width:44px; height:44px;}
+
+    .toast-stack{left:10px; right:10px; bottom:calc(10px + env(safe-area-inset-bottom)); width:auto;}
+
+    /* таблицы → карточки */
+    .table-wrap{border-radius:11px;}
+    #requestsTableHost table, #unrealizedTableHost table, #receiptsTableHost table, #anTableHost table, #roHost table{min-width:0 !important;}
+    #requestsTableHost thead, #unrealizedTableHost thead, #receiptsTableHost thead, #anTableHost thead, #roHost thead{display:none;}
+    #requestsTableHost tbody tr, #unrealizedTableHost tbody tr, #receiptsTableHost tbody tr, #anTableHost tbody tr, #roHost tbody tr{
+      display:grid; gap:4px 10px; padding:12px 14px; border-bottom:1px solid var(--line-soft); background:none !important;}
+    #requestsTableHost tbody tr:last-child, #unrealizedTableHost tbody tr:last-child, #receiptsTableHost tbody tr:last-child, #anTableHost tbody tr:last-child{border-bottom:none;}
+    #requestsTableHost td, #unrealizedTableHost td, #receiptsTableHost td, #anTableHost td, #roHost td{
+      display:block; padding:0 !important; border:none !important; white-space:normal !important; min-width:0;}
+    #requestsTableHost td:empty, #unrealizedTableHost td:empty, #receiptsTableHost td:empty{display:none;}
+
+    /* заявки и «без реализации»: №, менеджер, дата / позиции / статус / комментарий */
+    #requestsTableHost tbody tr, #unrealizedTableHost tbody tr{
+      grid-template-columns:auto 1fr auto;
+      grid-template-areas:"id mgr date" "items items items" "status status status" "comment comment comment" "act act act";}
+    #requestsTableHost td:nth-child(1), #unrealizedTableHost td:nth-child(1){grid-area:id; font-size:14px;}
+    #requestsTableHost td:nth-child(2), #unrealizedTableHost td:nth-child(2){grid-area:items; padding:4px 0 2px !important;}
+    #requestsTableHost td:nth-child(3), #unrealizedTableHost td:nth-child(3){grid-area:status;}
+    #requestsTableHost td:nth-child(4), #unrealizedTableHost td:nth-child(4){grid-area:mgr; color:var(--ink); font-weight:500; align-self:center;}
+    #requestsTableHost td:nth-child(5), #unrealizedTableHost td:nth-child(5){grid-area:date; font-family:var(--mono); font-size:11.5px; color:var(--ink-faint); align-self:center;}
+    #requestsTableHost td:nth-child(6), #unrealizedTableHost td:nth-child(6){grid-area:comment; font-size:12.5px; color:var(--ink-dim);}
+    #requestsTableHost td:nth-child(6):is(:empty), #requestsTableHost td:nth-child(6):only-child{display:none;}
+    #unrealizedTableHost td:nth-child(7){grid-area:act; margin-top:6px;}
+    #unrealizedTableHost td:nth-child(7) .ok-btn{width:100%; padding:11px; font-size:14px;}
+    .req-item{font-size:13.5px; line-height:1.5;}
+    .kit-parts{font-size:12px;}
+    .req-meta{white-space:normal;}
+    .badge-btn{padding:6px 11px; font-size:13px;}
+    .real-tag{font-size:11.5px;}
+
+    /* посадки: дата, код, кол-во, × / наименование / кто, комментарий */
+    #receiptsTableHost tbody tr{grid-template-columns:auto auto 1fr auto;
+      grid-template-areas:"date code qty del" "name name name name" "who comment comment comment";}
+    #receiptsTableHost td:nth-child(1){grid-area:date; font-family:var(--mono); font-size:12px; color:var(--ink-faint); align-self:center;}
+    #receiptsTableHost td:nth-child(2){grid-area:code; font-size:13.5px; align-self:center;}
+    #receiptsTableHost td:nth-child(3){grid-area:name; color:var(--ink);}
+    #receiptsTableHost td:nth-child(4){grid-area:qty; text-align:right; font-size:14px; color:var(--ok); align-self:center;}
+    #receiptsTableHost td:nth-child(5){grid-area:who; font-size:12px;}
+    #receiptsTableHost td:nth-child(6){grid-area:comment; font-size:12px;}
+    #receiptsTableHost td:nth-child(7){grid-area:del;}
+    #receiptsTableHost .row-del{width:32px; height:32px;}
+
+    /* аналитика и рекомендация: код + наименование, ниже цифры с подписями */
+    #anTableHost tbody tr{grid-template-columns:repeat(3, 1fr);}
+    #anTableHost td:nth-child(1){grid-column:1 / 2; font-size:13.5px;}
+    #anTableHost td:nth-child(2){grid-column:1 / -1; grid-row:2; color:var(--ink); margin-bottom:4px;}
+    #roHost tbody tr{grid-template-columns:repeat(3, 1fr);}
+    #roHost td:nth-child(1){grid-column:1 / 2;}
+    #roHost td:nth-child(2){grid-column:2 / 4; text-align:right; font-size:13.5px;}
+    #roHost td:nth-child(3){grid-column:1 / -1; color:var(--ink); margin-bottom:4px;}
+    #anTableHost td[data-label]::before, #roHost td[data-label]::before{
+      content:attr(data-label); display:block; font-family:var(--sans); font-size:10px; color:var(--ink-faint);
+      text-transform:uppercase; letter-spacing:0.05em; margin-bottom:1px;}
+    #anTableHost td.num, #roHost td.num{text-align:left;}
+    #roHost td.order{font-size:16px;}
+    .ro-params{gap:8px 12px;}
+    .ro-params label{flex:1 1 45%;}
+    .ro-params input{width:70px;}
+    .ro-params select{width:auto; min-width:92px;}
+    td:has(> .dash:only-child){display:none !important;}
+    .ro-head{flex-wrap:wrap;}
+    .an-select{max-width:none; flex:1 1 auto;}
+    .an-check{flex:1 1 100%; order:3;}
+    .hbar{grid-template-columns:minmax(64px,92px) 1fr 50px; gap:8px;}
+
+    /* остатки: компактнее, колонка с количеством всегда влезает */
+    #stockTableHost th, #pricelistTableHost th{white-space:normal !important; font-size:10px;}
+    #stockTableHost td.num{white-space:nowrap !important;}
+    #stockTableHost td.code{white-space:nowrap !important;}
+    #stockTableHost table{table-layout:auto; width:100%;}
+    .detail-grid, .detail-grid-4{grid-template-columns:repeat(3, minmax(0, 1fr)) !important; gap:8px 10px !important;}
+    tr.detail-row td{white-space:normal !important;}
+    tr.detail-row > td:first-child:empty{padding:0 !important; width:14px;}
+    .detail-grid > div{min-width:0; overflow-wrap:break-word;}
+    .detail-grid .detail-label{font-size:9.5px; letter-spacing:0.02em;}
+    tr.detail-row > td[colspan]{padding:10px 12px 12px 0 !important;}
+    #stockTableHost td.name{font-size:12.5px; line-height:1.35;}
+    #stockTableHost td.num{font-size:13.5px;}
+    td.expand-toggle, th.expand-col{width:14px; padding-right:0 !important;}
+
+    .status-menu{min-width:200px;}
+    .status-menu button{padding:12px 16px; font-size:14px;}
+  }
 </style>
 </head>
 <body>
@@ -740,6 +884,7 @@
       </div>
       <button class="refresh-btn" id="tgBtn" title="Уведомления в Telegram и в браузере">🔔 Уведомления</button>
       <button class="refresh-btn" id="refreshBtn">↻ Обновить</button>
+      <button class="refresh-btn mobile-logout" id="logoutBtnM" title="Выйти" style="display:none">Выйти</button>
     </div>
   </div>
   <div class="tabs">
@@ -1554,7 +1699,7 @@
         <td>${badge}${isUnrealized(req) ? `<span class="real-tag">без реализации</span>` : ""}${meta ? `<div class="req-meta">${meta}</div>` : ""}${isLocked(req) ? `<div class="req-meta">🔒 изменить или удалить можно после реализации</div>` : ""}${req.realized === "Нет" && req.realizedAt ? `<div class="req-meta">реализация проведена ${esc(req.realizedAt)}</div>` : ""}</td>
         <td>${esc(req.manager)}</td>
         <td>${esc(req.date)}</td>
-        <td>${esc(req.comment) || "—"}</td>
+        <td>${esc(req.comment) || `<span class="dash">—</span>`}</td>
       </tr>`;
     });
     html += `</tbody></table>`;
@@ -1736,7 +1881,7 @@
         <td><span class="badge ${statusClass(req.status)}">${esc(req.status)}</span>${req.status === ST_SHIPPED && req.shipDate ? `<div class="req-meta">отгружена ${esc(req.shipDate)}</div>` : ""}</td>
         <td>${esc(req.manager)}</td>
         <td>${esc(req.date)}</td>
-        <td>${esc(req.comment) || "—"}</td>
+        <td>${esc(req.comment) || `<span class="dash">—</span>`}</td>
         <td>${isWarehouse() ? `<button type="button" class="ok-btn" data-real="${req.id}">✓ Реализация проведена</button>` : ""}</td>
       </tr>`;
     });
@@ -1789,7 +1934,7 @@
         <td class="name">${esc(name)}</td>
         <td class="num">+${fmtNum(r.qty)}</td>
         <td>${esc(r.who)}</td>
-        <td>${esc(r.comment) || "—"}</td>
+        <td>${esc(r.comment) || `<span class="dash">—</span>`}</td>
         <td>${isWarehouse() ? `<button type="button" class="row-del" data-row="${r.sheetRow}" title="Удалить посадку">×</button>` : ""}</td>
       </tr>`;
     });
@@ -1879,6 +2024,7 @@
     const dot = document.getElementById("syncDot");
     const text = document.getElementById("syncText");
     dot.classList.remove("spin","err");
+    document.getElementById("syncPill").classList.toggle("has-error", state === "error");
     if(state === "loading"){ dot.classList.add("spin"); text.textContent = msg || "Обновляется…"; }
     else if(state === "error"){ dot.classList.add("err"); text.textContent = msg || "Ошибка обновления"; }
     else { text.textContent = msg || "Данные актуальны"; }
@@ -2264,6 +2410,25 @@
       if(syncQueued){ syncQueued = false; syncAll(true); }
     }
   }
+
+  // ---------- Телефон: фильтры одной прокручиваемой строкой, подписи для карточек ----------
+  document.querySelectorAll(".toolbar").forEach(tb => {
+    const chips = [...tb.children].filter(el => el.classList.contains("filter-chip"));
+    if(chips.length < 2) return;
+    const row = document.createElement("div"); row.className = "chip-row";
+    chips[0].before(row); chips.forEach(c => row.appendChild(c));
+  });
+  function labelCells(host, skip){
+    const t = host.querySelector("table"); if(!t) return;
+    const heads = [...t.querySelectorAll("thead th")].map(th => th.textContent.replace(/[▲▼↑↓]/g, "").trim());
+    t.querySelectorAll("tbody tr").forEach(tr => [...tr.children].forEach((td, i) => { if(heads[i] && i > skip) td.setAttribute("data-label", heads[i]); }));
+  }
+  [["anTableHost", 1], ["roHost", 2]].forEach(([id, skip]) => {
+    const host = document.getElementById(id);
+    new MutationObserver(() => labelCells(host, skip)).observe(host, {childList: true});
+  });
+  // активная вкладка всегда видна в прокручиваемой строке вкладок
+  document.querySelectorAll(".tab-btn").forEach(b => b.addEventListener("click", () => b.scrollIntoView({inline: "nearest", block: "nearest", behavior: "smooth"})));
 
   // ---------- Wiring: tabs, search, filters ----------
   document.querySelectorAll(".tab-btn").forEach(btn=>{
@@ -2770,6 +2935,7 @@
     if(!refreshTimer) refreshTimer = setInterval(()=>syncAll(false), 60*1000);
   }
 
+  document.getElementById("logoutBtnM").addEventListener("click", ()=> document.getElementById("logoutBtn").click());
   document.getElementById("logoutBtn").addEventListener("click", ()=>{
     try{ sessionStorage.removeItem(SESSION_KEY); }catch(e){ /* ignore */ }
     location.reload();
