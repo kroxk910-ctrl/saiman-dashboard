@@ -1332,9 +1332,12 @@
     const dl = document.getElementById("stockCodes");
     dl.innerHTML = stockRows.filter(r=>!r.isSection && r.code)
       .map(r => `<option value="${esc(r.code)}">${esc(r.name)} · доступно ${fmtNum(availOf(r.code))}</option>`).join("");
-    document.getElementById("requestCodes").innerHTML = dl.innerHTML + Object.values(kitIndex)
+    document.getElementById("requestCodes").innerHTML = stockRows.filter(r=>!r.isSection && r.code)
+      .map(r => { const k = kitIndex[normCode(r.code)];
+        const tail = k ? `готовых ${fmtNum(availOf(r.code))} + можно собрать ${fmtNum(kitBuildable(k))} (${esc(kitPartsText(k))})` : `доступно ${fmtNum(availOf(r.code))}`;
+        return `<option value="${esc(r.code)}">${esc(r.name)} · ${tail}</option>`; }).join("") + Object.values(kitIndex)
       .filter(k => !stockIndex[normCode(k.code)])
-      .map(k => `<option value="${esc(k.code)}">🧩 комплект ${esc(kitPartsText(k))} · можно собрать ${fmtNum(kitAvail(k))}</option>`).join("");
+      .map(k => `<option value="${esc(k.code)}">🧩 комплект ${esc(kitPartsText(k))} · можно собрать ${fmtNum(kitBuildable(k))}</option>`).join("");
   }
 
   // ---------- Render: REQUESTS ----------
@@ -1818,18 +1821,29 @@
     Object.keys(out).forEach(k => { if(!out[k].parts.length) delete out[k]; });
     return out;
   }
-  function kitOf(code){ const k = normCode(code); return stockIndex[k] ? null : (kitIndex[k] || null); }
-  function kitAvail(kit){
+  function kitOf(code){ return kitIndex[normCode(code)] || null; }
+  /** Сколько можно собрать из частей. */
+  function kitBuildable(kit){
     return Math.max(0, Math.min(...kit.parts.map(p => stockIndex[p.code] ? Math.floor(availOf(p.code) / p.qty) : 0)));
   }
+  /** Готовые комплекты (если такой код есть в остатках) + сколько можно собрать. */
+  const kitReady = kit => stockIndex[normCode(kit.code)] ? availOf(kit.code) : 0;
+  const kitAvail = kit => kitReady(kit) + kitBuildable(kit);
   const kitPartsText = kit => kit.parts.map(p => (stockIndex[p.code] ? stockIndex[p.code].code : p.code) + (p.qty !== 1 ? "×" + p.qty : "")).join(" + ");
   /** Позиции заявки → потребность по кодам остатков (комплекты раскрыты). */
   function expandToParts(items){
     const totals = {};
     items.forEach(it => {
       const kit = kitOf(it.code);
-      if(kit) kit.parts.forEach(p => { totals[p.code] = (totals[p.code] || 0) + p.qty * it.qty; });
-      else { const k = normCode(it.code); totals[k] = (totals[k] || 0) + it.qty; }
+      const k = normCode(it.code);
+      if(kit){
+        // как на сервере: сначала готовые комплекты, остальное — из частей
+        const ready = stockIndex[k] ? Math.max(0, availOf(k) - (totals[k] || 0)) : 0;
+        const take = Math.min(it.qty, ready), build = it.qty - take;
+        if(take) totals[k] = (totals[k] || 0) + take;
+        kit.parts.forEach(p => { if(build) totals[p.code] = (totals[p.code] || 0) + p.qty * build; });
+      }
+      else totals[k] = (totals[k] || 0) + it.qty;
     });
     return totals;
   }
@@ -1949,17 +1963,18 @@
       if(direct()){ h.textContent = (s ? s.name + " · " : "") + "с завода, остаток склада не трогаем"; return; }
       const kit = mode === "request" ? kitOf(code) : null;
       if(kit){
-        const missing = kit.parts.filter(p => !stockIndex[p.code]).map(p => p.code);
-        if(missing.length){ h.textContent = `Комплект: ${kitPartsText(kit)} · в остатках нет ${missing.join(", ")}`; h.classList.add("bad"); return; }
+        const ready = kitReady(kit), build = kitBuildable(kit);
+        const head = `🧩 Комплект: ${kitPartsText(kit)} · ` + (stockIndex[code] ? `готовых ${fmtNum(ready)} + можно собрать ${fmtNum(build)}` : `можно собрать ${fmtNum(build)}`);
         const need = expandToParts(collect().filter(it => /^\d+$/.test(it.qty)).map(it => ({code: it.code, qty: Number(it.qty)})));
+        const missing = kit.parts.filter(p => !stockIndex[p.code] && need[p.code] > 0).map(p => p.code);
+        if(missing.length){ h.textContent = `${head} · в остатках нет ${missing.join(", ")}`; h.classList.add("bad"); return; }
         const short = kit.parts.filter(p => need[p.code] > availOf(p.code));
         if(short.length){
-          h.textContent = `🧩 Комплект: ${kitPartsText(kit)} · не хватает ${short.map(p => `${stockIndex[p.code].code} (доступно ${fmtNum(availOf(p.code))}, нужно ${fmtNum(need[p.code])})`).join(", ")}`;
+          h.textContent = `${head} · не хватает ${short.map(p => `${stockIndex[p.code].code} (доступно ${fmtNum(availOf(p.code))}, нужно ${fmtNum(need[p.code])})`).join(", ")}`;
           h.classList.add("bad");
         } else {
-          const n = kitAvail(kit);
-          h.textContent = `🧩 Комплект: ${kitPartsText(kit)} · можно собрать ${fmtNum(n)}`;
-          h.classList.add(n > 0 ? "good" : "bad");
+          h.textContent = head;
+          h.classList.add(ready + build > 0 ? "good" : "bad");
         }
         return;
       }
@@ -2020,13 +2035,14 @@
         const key = normCode(it.code);
         const kit = mode === "request" && !direct() ? kitOf(key) : null;
         if(kit){
-          const missing = kit.parts.filter(p => !stockIndex[p.code]);
-          if(missing.length) return `В комплекте «${kit.code}» нет в остатках: ${missing.map(p => p.code).join(", ")}`;
+          /* части проверим ниже по общей потребности */
         } else if(!stockIndex[key] && !direct()) return `Кода «${it.code}» нет в остатках`;
         totals[key] = (totals[key] || 0) + Number(it.qty);
       }
       if(mode === "request" && !direct()){
         const need = expandToParts(Object.entries(totals).map(([code, qty]) => ({code, qty})));
+        const absent = Object.keys(need).filter(k => !stockIndex[k]);
+        if(absent.length) return `Для комплекта не хватает позиций в остатках: ${absent.join(", ")}`;
         const short = Object.entries(need).filter(([k,q]) => q > availOf(k))
           .map(([k,q]) => `${stockIndex[k].code} — доступно ${fmtNum(availOf(k))}, нужно ${fmtNum(q)}`);
         if(short.length) return "Не хватает на складе: " + short.join("; ");
