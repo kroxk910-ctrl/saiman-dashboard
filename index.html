@@ -1253,12 +1253,7 @@
 (function(){
   "use strict";
 
-  const FILE_ID = "1c0jk0ntxmZxKY80BSFVkoV-9ochfBRlPzlLpaLQY8TU";
-  const GID_STOCK  = "1284429257";
-  const GID_USERS = "203819478";
-  const GID_PRICELIST = "604013150";
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwYuJJBxBa6Dh90eUVmXUjyrBQdnrHmZ9whWYiJ9ZduRgOp03511GOwHgB4KFo9zIOL/exec";
-  const META_KEY = "qmt_meta_v2";
   const SESSION_KEY = "qmt_dashboard_user_v2";
 
   const ST_NEW = "Новая", ST_PREP = "В подготовке", ST_READY = "Готова к отгрузке",
@@ -1267,32 +1262,6 @@
   const ALL_STATUSES = [ST_NEW, ST_PREP, ST_READY, ST_SHIPPED, ST_CANCELLED, ST_DIRECT];
   const TYPE_FACTORY = "С завода";
   const HOLD_STATUSES = [ST_NEW, ST_PREP, ST_READY];
-
-  function csvUrl(gid){
-    return `https://docs.google.com/spreadsheets/d/${FILE_ID}/export?format=csv&gid=${gid}&_=${Date.now()}`;
-  }
-
-  // ---------- CSV parser (handles quoted fields, commas, newlines) ----------
-  function parseCSV(text){
-    const rows = [];
-    let row = [], field = "", inQuotes = false;
-    for(let i=0; i<text.length; i++){
-      const c = text[i], next = text[i+1];
-      if(inQuotes){
-        if(c === '"' && next === '"'){ field += '"'; i++; }
-        else if(c === '"'){ inQuotes = false; }
-        else { field += c; }
-      } else {
-        if(c === '"'){ inQuotes = true; }
-        else if(c === ','){ row.push(field); field = ""; }
-        else if(c === '\r'){ /* skip */ }
-        else if(c === '\n'){ row.push(field); rows.push(row); row = []; field = ""; }
-        else { field += c; }
-      }
-    }
-    if(field.length || row.length){ row.push(field); rows.push(row); }
-    return rows.filter(r => r.length > 1 || (r[0] && r[0].trim() !== ""));
-  }
 
   function esc(s){
     return String(s ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
@@ -1835,7 +1804,7 @@
     let data;
     try{ data = JSON.parse(text); }
     catch{ throw new Error("Сервер вернул непонятный ответ: " + text.slice(0,120)); }
-    if(!data.ok) throw new Error(data.error || "Неизвестная ошибка");
+    if(!data.ok){ const e = new Error(data.error || "Неизвестная ошибка"); e.badPin = !!data.badPin; throw e; }
     return data;
   }
 
@@ -2101,41 +2070,22 @@
     }
   }
 
-  async function fetchSheet(gid){
-    const res = await fetch(csvUrl(gid), {cache:"no-store"});
-    if(!res.ok) throw new Error("HTTP " + res.status);
-    const text = new TextDecoder("utf-8").decode(await res.arrayBuffer());
-    if(text.trim().startsWith("<")) throw new Error("Таблица недоступна по ссылке — проверь доступ «у кого есть ссылка»");
-    return parseCSV(text);
-  }
-
-  // gid листов «Заявки на склад» и «Посадки» сообщает Apps Script (он же создаёт листы при первом запуске)
-  async function getMeta(force){
-    if(!force){
-      try{
-        const saved = JSON.parse(localStorage.getItem(META_KEY) || "null");
-        if(saved && saved.requests && saved.receipts && "kits" in saved && "shortage" in saved) return saved;
-      }catch(e){ /* ignore */ }
+  /** Данные для дашборда одним запросом к Apps Script (вместо чтения таблицы по открытой ссылке). */
+  async function loadData(){
+    let data;
+    try{ data = await api("data", {}); }
+    catch(err){
+      if(err.badPin){ forceRelogin(); throw new Error("PIN изменился — войдите заново"); }
+      if(/Неизвестное действие/.test(err.message)) throw new Error("Apps Script не обновлён: разверни новую версию скрипта");
+      throw err;
     }
-    const res = await fetch(APPS_SCRIPT_URL + "?action=meta&_=" + Date.now(), {cache:"no-store"});
-    let data = null;
-    try{ data = JSON.parse(await res.text()); }catch(e){ /* not json */ }
-    if(!data || !data.ok || !data.gids) throw new Error("Apps Script не обновлён: разверни новую версию скрипта");
-    const gids = Object.assign({kits: "", shortage: ""}, data.gids);
-    try{ localStorage.setItem(META_KEY, JSON.stringify(gids)); }catch(e){ /* ignore */ }
-    return gids;
+    const rows = v => (Array.isArray(v) ? v : []).map(r => r.map(c => String(c ?? "")));
+    return {stock: rows(data.stock), pricelist: rows(data.pricelist), requests: rows(data.requests),
+            receipts: rows(data.receipts), kits: rows(data.kits), shortage: rows(data.shortage)};
   }
-
-  // Лист «Комплекты» необязателен: если не загрузился — просто нет комплектов в списке.
-  const fetchKits = gid => gid ? fetchSheet(gid).catch(err => { console.warn("Комплекты:", err); return null; }) : Promise.resolve(null);
-  async function fetchOpsSheets(){
-    let meta = await getMeta(false);
-    try{
-      return await Promise.all([fetchSheet(meta.requests), fetchSheet(meta.receipts), fetchKits(meta.kits), fetchKits(meta.shortage)]);
-    }catch(err){
-      meta = await getMeta(true);   // листы могли пересоздать — спросим gid заново
-      return await Promise.all([fetchSheet(meta.requests), fetchSheet(meta.receipts), fetchKits(meta.kits), fetchKits(meta.shortage)]);
-    }
+  function forceRelogin(){
+    try{ sessionStorage.removeItem(SESSION_KEY); }catch(e){ /* ignore */ }
+    setTimeout(() => location.reload(), 1500);
   }
 
   // ---------- Комплекты: «IC/компл» = IC + YJ (собираются при реализации, в остатках их нет) ----------
@@ -2521,30 +2471,21 @@
     syncing = true;
     setSyncState("loading", isManual ? "Обновляю…" : "Обновляется…");
     try{
-      const [base, ops] = await Promise.allSettled([
-        Promise.all([fetchSheet(GID_STOCK), fetchSheet(GID_PRICELIST)]),
-        fetchOpsSheets()
-      ]);
-      if(base.status === "rejected") throw base.reason;
-      const [stockRaw, pricelistRaw] = base.value;
-      const st = buildStock(stockRaw);
+      // Все данные — через Apps Script с проверкой PIN (таблица может быть закрытой)
+      const data = await loadData();
+      const st = buildStock(data.stock);
       stockRows = st.rows;
       stockIndex = {};
       stockRows.forEach(r => { if(!r.isSection && r.code && !stockIndex[normCode(r.code)]) stockIndex[normCode(r.code)] = r; });
       snapshot = {disp: st.snapDisp, key: dateKey(st.snapDisp)};
-      pricelistRows = buildPricelist(pricelistRaw);
-      if(ops.status === "fulfilled"){
-        opsError = "";
-        requestRows = buildRequestRows(ops.value[0]);
-        requests = groupRequests(requestRows);
-        pendingEvents = detectRequestEvents(requests);
-        receiptRows = buildReceipts(ops.value[1]);
-        if(ops.value[2]) kitIndex = buildKits(ops.value[2]);
-        if(ops.value[3]) shortageRows = buildShortage(ops.value[3]);
-      } else {
-        console.error(ops.reason);
-        opsError = ops.reason && ops.reason.message ? ops.reason.message : "не удалось загрузить заявки";
-      }
+      pricelistRows = buildPricelist(data.pricelist);
+      opsError = "";
+      requestRows = buildRequestRows(data.requests);
+      requests = groupRequests(requestRows);
+      pendingEvents = detectRequestEvents(requests);
+      receiptRows = buildReceipts(data.receipts);
+      kitIndex = buildKits(data.kits);
+      shortageRows = buildShortage(data.shortage);
       renderAll();
       notifyAll(pendingEvents); pendingEvents = [];
       document.getElementById("footTime").textContent = new Date().toLocaleTimeString("ru-RU");
@@ -2555,6 +2496,7 @@
       const box = `<div class="state-box"><div class="big">Не удалось загрузить данные</div><div>${esc(err.message)}</div><button class="retry-btn" data-retry>Повторить</button></div>`;
       if(!stockRows.length) document.getElementById("stockTableHost").innerHTML = box;
       if(!pricelistRows.length) document.getElementById("pricelistTableHost").innerHTML = box;
+      if(!requestRows.length) ["requestsTableHost", "unrealizedTableHost", "receiptsTableHost"].forEach(id => { document.getElementById(id).innerHTML = box; });
       document.querySelectorAll("[data-retry]").forEach(b => b.addEventListener("click", ()=>syncAll(true)));
     }finally{
       syncing = false;
@@ -3065,16 +3007,6 @@
   let pinBuffer = "";
   let pinBusy = false;
 
-  async function fetchUsers(){
-    const rows = await fetchSheet(GID_USERS);
-    const out = [];
-    for(let i=1; i<rows.length; i++){
-      const name = (rows[i][0]||"").trim();
-      if(name) out.push({name, pass:(rows[i][1]||"").trim(), role:(rows[i][2]||"").trim()});
-    }
-    return out;
-  }
-
   let refreshTimer = null;
   function startApp(){
     document.getElementById("loginScreen").style.display = "none";
@@ -3109,8 +3041,13 @@
     pinBusy = true;
     hideMsg(loginError);
     try{
-      const users = await fetchUsers();
-      const match = users.find(u => u.pass === pinBuffer);
+      let match = null;
+      try{
+        const r = await api("login", {pin: pinBuffer});
+        match = {name: r.name, role: r.role};
+      }catch(err){
+        if(!err.badPin) throw (/Неизвестное действие/.test(err.message) ? new Error("Apps Script не обновлён — разверни новую версию") : err);
+      }
       if(!match){
         pinDotsEl.classList.add("error", "shake");
         showMsg(loginError, "Неверный PIN-код");
