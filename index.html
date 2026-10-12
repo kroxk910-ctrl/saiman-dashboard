@@ -363,6 +363,48 @@
   .stat-value.warn{color:var(--wait);}
   .stat-value.ok{color:var(--ok);}
 
+  /* ===== Analytics ===== */
+  .an-grid{display:grid; grid-template-columns:3fr 2fr; gap:14px;}
+  .an-card{background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:14px 16px; min-width:0;}
+  .an-title{font-size:11px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:10px;}
+  .an-select{background:var(--panel); border:1px solid var(--line); color:var(--ink); font-family:var(--sans); font-size:13px; padding:7px 10px; border-radius:7px; max-width:220px;}
+  .an-check{display:flex; align-items:center; gap:6px; color:var(--ink-dim); font-size:13px; cursor:pointer; user-select:none;}
+  .hbar{display:grid; grid-template-columns:minmax(70px,110px) 1fr 56px; align-items:center; gap:10px; padding:3px 4px; border-radius:4px;}
+  .hbar:hover{background:var(--line-soft);}
+  .hbar-code{font-family:var(--mono); font-size:12px; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .hbar-track{height:14px; position:relative;}
+  .hbar-fill{position:absolute; left:0; top:0; bottom:0; background:var(--accent); border-radius:0 4px 4px 0; min-width:2px;}
+  .hbar-val{font-family:var(--mono); font-size:12px; color:var(--ink-dim); text-align:right;}
+  .vbars{display:flex; align-items:flex-end; gap:2px; height:140px; border-bottom:1px solid var(--line); padding-top:16px;}
+  .vbar{flex:1; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; height:100%; position:relative; min-width:0; cursor:default;}
+  .vbar-fill{width:100%; max-width:28px; background:var(--accent); border-radius:4px 4px 0 0; min-height:1px;}
+  .vbar:hover .vbar-fill{background:var(--accent-hover);}
+  .vbar-top{position:absolute; top:-15px; font-family:var(--mono); font-size:10px; color:var(--ink-dim); white-space:nowrap;}
+  .vlabels{display:flex; gap:2px; margin-top:4px;}
+  .vlabels span{flex:1; text-align:center; font-family:var(--mono); font-size:9.5px; color:var(--ink-faint); min-width:0; overflow:hidden; white-space:nowrap;}
+  .an-tip{position:fixed; z-index:200; pointer-events:none; background:#0d1013; border:1px solid var(--line); border-radius:7px; padding:7px 10px; font-size:12px; color:var(--ink); box-shadow:0 6px 20px rgba(0,0,0,.4); display:none; max-width:280px;}
+  .an-tip b{font-family:var(--mono);}
+  .an-tip .muted{color:var(--ink-dim);}
+  .an-mgr{display:grid; grid-template-columns:1fr auto auto; gap:4px 14px; font-size:12.5px;}
+  .an-mgr .n{font-family:var(--mono); text-align:right; color:var(--ink-dim);}
+  td.cover-bad{color:var(--danger);} td.cover-warn{color:var(--wait);}
+  .ro-card{margin-bottom:14px;}
+  .ro-head{display:flex; align-items:center; gap:8px; margin-bottom:10px;}
+  .ro-params{display:flex; flex-wrap:wrap; gap:8px 18px; margin-bottom:10px; font-size:12.5px; color:var(--ink-dim);}
+  .ro-params label{display:flex; align-items:center; gap:6px;}
+  .ro-params input, .ro-params select{background:var(--bg); border:1px solid var(--line); color:var(--ink); font-family:var(--mono); font-size:12.5px; padding:4px 6px; border-radius:6px; width:64px;}
+  .ro-params select{width:auto;}
+  .ro-note{font-size:12px; color:var(--ink-faint); margin-bottom:8px;}
+  .ro-note.warn{color:var(--wait);}
+  .ro-table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  .ro-table th{font-size:11px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:0.05em; text-align:left; font-weight:500; padding:6px 8px; border-bottom:1px solid var(--line);}
+  .ro-table td{padding:7px 8px; border-bottom:1px solid var(--line-soft);}
+  .ro-table .num{text-align:right; font-family:var(--mono);}
+  .ro-table .order{color:var(--accent); font-weight:700; font-size:13.5px;}
+  .ro-pri{white-space:nowrap; font-size:12px;}
+  .ro-pri.urgent{color:var(--danger);} .ro-pri.soon{color:var(--wait);}
+  @media (max-width: 760px){ .an-grid{grid-template-columns:1fr;} }
+
   /* ===== Table ===== */
   .table-wrap{
     background:var(--panel); border:1px solid var(--line); border-radius:9px;
@@ -706,6 +748,7 @@
     <button class="tab-btn" data-view="requests"><span id="requestsTabLabel">Заявки</span> <span class="count" id="requestsCount">—</span></button>
     <button class="tab-btn" data-view="receipts" data-warehouse-only hidden>Посадки <span class="count" id="receiptsCount">—</span></button>
     <button class="tab-btn" data-view="pricelist">Прайс-лист <span class="count" id="pricelistCount">—</span></button>
+    <button class="tab-btn" data-view="analytics" data-admin-only hidden>Аналитика</button>
   </div>
 </div>
 
@@ -807,6 +850,56 @@
     </div>
   </section>
 
+  <!-- ============ ANALYTICS VIEW (только админ) ============ -->
+  <section class="view" id="view-analytics">
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Отгружено, шт</div><div class="stat-value accent" id="anStatQty">—</div></div>
+      <div class="stat"><div class="stat-label">Отгрузок</div><div class="stat-value" id="anStatReq">—</div></div>
+      <div class="stat"><div class="stat-label">Разных позиций</div><div class="stat-value" id="anStatCodes">—</div></div>
+      <div class="stat"><div class="stat-label">Самый ходовой</div><div class="stat-value" id="anStatTop">—</div></div>
+    </div>
+    <div class="toolbar">
+      <button class="filter-chip" data-anperiod="7">7 дней</button>
+      <button class="filter-chip active" data-anperiod="30">30 дней</button>
+      <button class="filter-chip" data-anperiod="90">90 дней</button>
+      <button class="filter-chip" data-anperiod="365">Год</button>
+      <button class="filter-chip" data-anperiod="all">Всё время</button>
+      <select id="anSection" class="an-select" title="Раздел из листа «Остатки»"><option value="">Все разделы</option></select>
+      <label class="an-check"><input type="checkbox" id="anDirect" checked> + прямые с завода</label>
+    </div>
+    <div class="an-card ro-card">
+      <div class="ro-head">
+        <div class="an-title" style="margin:0">🛒 Рекомендация к заказу на заводе</div>
+        <div class="toolbar-spacer"></div>
+        <button type="button" class="small-btn" id="roCopy">📋 Скопировать заказ</button>
+      </div>
+      <div class="ro-params">
+        <label>Поставка с завода <input type="number" id="roLead" min="0" max="365"> дн.</label>
+        <label>Страховой запас <input type="number" id="roSafety" min="0" max="365"> дн.</label>
+        <label>Заказывать на <input type="number" id="roCover" min="1" max="365"> дн.</label>
+        <label>Спрос считать за <select id="roWindow"><option value="30">30 дн.</option><option value="60">60 дн.</option><option value="90">90 дн.</option></select></label>
+        <label>Округлять до <select id="roRound"><option value="1">1</option><option value="5">5</option><option value="10">10</option><option value="50">50</option><option value="100">100</option></select> шт</label>
+      </div>
+      <div class="ro-note" id="roNote"></div>
+      <div id="roHost"></div>
+    </div>
+
+    <div class="an-grid">
+      <div class="an-card">
+        <div class="an-title">Топ-15 по отгрузкам, шт</div>
+        <div id="anTop"></div>
+      </div>
+      <div class="an-card">
+        <div class="an-title">Отгрузки по неделям, шт</div>
+        <div id="anWeeks"></div>
+        <div class="an-title" style="margin-top:18px">По менеджерам</div>
+        <div id="anManagers"></div>
+      </div>
+    </div>
+    <div class="an-title" style="margin:18px 0 8px">Все позиции · «хватит на» = доступно ÷ средний расход в день за период</div>
+    <div class="table-wrap"><div id="anTableHost"></div></div>
+  </section>
+
   <!-- ============ PRICELIST VIEW ============ -->
   <section class="view" id="view-pricelist">
     <div class="stats" id="pricelistStats">
@@ -831,6 +924,7 @@
 <datalist id="stockCodes"></datalist>
 <datalist id="requestCodes"></datalist>
 <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+<div class="an-tip" id="anTip"></div>
 
 <!-- ============ NEW REQUEST MODAL ============ -->
 <div class="modal-overlay" id="requestModalOverlay">
@@ -1870,6 +1964,240 @@
     return totals;
   }
 
+
+  // ---------- Аналитика (только админ): спрос по отгрузкам ----------
+  let anPeriod = "30";
+  const keyToDate = k => { const d = String(k).replace(/\D/g, ""); return new Date(+d.slice(0,4), +d.slice(4,6)-1, +d.slice(6,8)); };
+  const dateToKey = dt => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+  const keyPlusDays = (k, n) => { const dt = keyToDate(k); dt.setDate(dt.getDate() + n); return dateToKey(dt); };
+  const daysBetween = (k1, k2) => Math.round((keyToDate(k2) - keyToDate(k1)) / 86400000);
+  const weekStartKey = k => keyPlusDays(k, -((keyToDate(k).getDay() + 6) % 7));   // понедельник
+  const shortDate = k => { const x = String(k).replace(/\D/g, ""); return x.slice(6,8) + "." + x.slice(4,6); };
+
+  function sectionOfCode(){
+    const map = {}; let cur = "";
+    stockRows.forEach(r => { if(r.isSection) cur = r.name; else if(r.code) map[normCode(r.code)] = cur; });
+    return map;
+  }
+  const shownCode = code => stockIndex[code] ? stockIndex[code].code : (kitIndex[code] ? kitIndex[code].code : code);
+  const nameOf = code => stockIndex[code] ? stockIndex[code].name : (kitIndex[code] ? kitIndex[code].name : "");
+
+  function analyticsData(){
+    const includeDirect = document.getElementById("anDirect").checked;
+    const section = document.getElementById("anSection").value;
+    const today = todayKey();
+    const from = anPeriod === "all" ? "" : keyPlusDays(today, -(Number(anPeriod) - 1));
+    const secOf = sectionOfCode();
+    const rows = [];
+    requestRows.forEach(r => {
+      if(!(r.status === ST_SHIPPED || (includeDirect && r.status === ST_DIRECT))) return;
+      const k = dateKey(r.shipDate);
+      if(!k || (from && k < from) || k > today) return;
+      // готовый комплект из остатков считаем по его деталям — это спрос на сам счётчик и модем
+      const kit = !r.kit && kitIndex[r.codeKey];
+      const parts = kit ? kit.parts.map(p => ({code: p.code, qty: p.qty * r.qty})) : [{code: r.codeKey, qty: r.qty}];
+      parts.forEach(p => rows.push({id: r.id, code: p.code, qty: p.qty, key: k, manager: r.manager}));
+    });
+    const list = section ? rows.filter(x => secOf[x.code] === section) : rows;
+    const byCode = {}, byMgr = {};
+    list.forEach(x => {
+      const c = byCode[x.code] || (byCode[x.code] = {code: x.code, qty: 0, ids: new Set()});
+      c.qty += x.qty; c.ids.add(x.id);
+      const m = byMgr[x.manager] || (byMgr[x.manager] = {name: x.manager, qty: 0, ids: new Set()});
+      m.qty += x.qty; m.ids.add(x.id);
+    });
+    const first = list.reduce((a, x) => (!a || x.key < a) ? x.key : a, "");
+    const start = from || first || today;
+    const days = Math.max(1, daysBetween(start, today) + 1);
+    const weeks = [];
+    if(list.length){
+      for(let w = weekStartKey(start); w <= today; w = keyPlusDays(w, 7)) weeks.push([w, 0]);
+      while(weeks.length > 26) weeks.shift();                        // не больше полугода столбиков
+      const idx = Object.fromEntries(weeks.map(([w], i) => [w, i]));
+      list.forEach(x => { const i = idx[weekStartKey(x.key)]; if(i !== undefined) weeks[i][1] += x.qty; });
+    }
+    const items = Object.values(byCode).sort((a,b) => b.qty - a.qty);
+    return {
+      items, weeks, days,
+      total: items.reduce((n, c) => n + c.qty, 0),
+      reqCount: new Set(list.map(x => x.id)).size,
+      managers: Object.values(byMgr).sort((a,b) => b.qty - a.qty)
+    };
+  }
+
+  const anTip = document.getElementById("anTip");
+  function bindTips(host){
+    host.querySelectorAll("[data-tip]").forEach(el => {
+      el.addEventListener("mousemove", e => {
+        anTip.innerHTML = el.dataset.tip; anTip.style.display = "block";
+        anTip.style.left = Math.min(e.clientX + 14, window.innerWidth - anTip.offsetWidth - 8) + "px";
+        anTip.style.top = (e.clientY + 14) + "px";
+      });
+      el.addEventListener("mouseleave", () => { anTip.style.display = "none"; });
+    });
+  }
+
+  function renderAnalytics(){
+    if(!isAdmin()) return;
+    renderReorder();
+    const sel = document.getElementById("anSection");
+    const secs = [...new Set(stockRows.filter(r => r.isSection).map(r => r.name))];
+    const cur = sel.value;
+    sel.innerHTML = `<option value="">Все разделы</option>` + secs.map(x => `<option value="${esc(x)}"${x === cur ? " selected" : ""}>${esc(x)}</option>`).join("");
+    sel.hidden = !secs.length;
+
+    const d = analyticsData();
+    document.getElementById("anStatQty").textContent = fmtNum(d.total);
+    document.getElementById("anStatReq").textContent = fmtNum(d.reqCount);
+    document.getElementById("anStatCodes").textContent = fmtNum(d.items.length);
+    document.getElementById("anStatTop").textContent = d.items.length ? shownCode(d.items[0].code) : "—";
+
+    const topHost = document.getElementById("anTop"), wHost = document.getElementById("anWeeks");
+    const mHost = document.getElementById("anManagers"), tHost = document.getElementById("anTableHost");
+    if(!d.items.length){
+      const empty = `<div class="state-box"><div class="big">За этот период отгрузок нет</div><div>Аналитика копится с тех пор, как отгрузки отмечаются в дашборде.</div></div>`;
+      topHost.innerHTML = empty; wHost.innerHTML = ""; mHost.innerHTML = ""; tHost.innerHTML = empty;
+      return;
+    }
+    const pct = q => d.total ? Math.round(q / d.total * 100) : 0;
+    const perDay = q => Math.round(q / d.days * 10) / 10;
+
+    const max = d.items[0].qty;
+    topHost.innerHTML = d.items.slice(0, 15).map(c =>
+      `<div class="hbar" data-tip="<b>${esc(shownCode(c.code))}</b> ${esc(nameOf(c.code))}<br>${fmtNum(c.qty)} шт · ${c.ids.size} отгр. · ${pct(c.qty)}%<br><span class='muted'>в среднем ${fmtNum(perDay(c.qty))} шт/день</span>">
+        <span class="hbar-code">${esc(shownCode(c.code))}</span>
+        <span class="hbar-track"><span class="hbar-fill" style="width:${(c.qty / max * 100).toFixed(1)}%"></span></span>
+        <span class="hbar-val">${fmtNum(c.qty)}</span></div>`).join("");
+    bindTips(topHost);
+
+    const wmax = Math.max(1, ...d.weeks.map(([,v]) => v));
+    const peak = d.weeks.reduce((a, x) => x[1] > a[1] ? x : a, ["", -1])[0];
+    wHost.innerHTML = `<div class="vbars">${d.weeks.map(([k,v]) =>
+        `<div class="vbar" data-tip="Неделя с ${shortDate(k)}<br><b>${fmtNum(v)}</b> шт">${k === peak && v > 0 ? `<span class="vbar-top">${fmtNum(v)}</span>` : ""}<div class="vbar-fill" style="height:${(v / wmax * 100).toFixed(1)}%"></div></div>`).join("")}</div>
+      <div class="vlabels">${d.weeks.map(([k], i) => `<span>${d.weeks.length > 10 && i % 2 ? "" : shortDate(k)}</span>`).join("")}</div>`;
+    bindTips(wHost);
+
+    mHost.innerHTML = `<div class="an-mgr">${d.managers.map(m =>
+      `<span>${esc(m.name)}</span><span class="n">${m.ids.size} отгр.</span><span class="n">${fmtNum(m.qty)} шт</span>`).join("")}</div>`;
+
+    let html = `<table><thead><tr><th>Код</th><th>Наименование</th><th class="num">Отгружено</th><th class="num">Отгрузок</th><th class="num">Доля</th><th class="num">В день</th><th class="num">Доступно</th><th class="num">Хватит на</th></tr></thead><tbody>`;
+    d.items.forEach(c => {
+      const rate = c.qty / d.days;
+      const a = stockIndex[c.code] ? availOf(c.code) : null;
+      const cover = a === null || !(rate > 0) ? null : Math.floor(a / rate);
+      const cls = cover === null ? "" : cover < 7 ? "cover-bad" : cover < 14 ? "cover-warn" : "";
+      html += `<tr><td class="code">${esc(shownCode(c.code))}</td><td class="name">${esc(nameOf(c.code))}</td>
+        <td class="num">${fmtNum(c.qty)}</td><td class="num">${c.ids.size}</td><td class="num">${pct(c.qty)}%</td>
+        <td class="num">${fmtNum(perDay(c.qty))}</td><td class="num">${a === null ? "—" : fmtNum(a)}</td>
+        <td class="num ${cls}">${cover === null ? "—" : (cover < 7 ? "⚠ " : "") + fmtNum(cover) + " дн."}</td></tr>`;
+    });
+    tHost.innerHTML = html + `</tbody></table>`;
+  }
+
+  // ---------- Рекомендация к заказу ----------
+  // точка заказа = расход/день × (поставка + страховой запас); если доступно ниже — заказываем
+  // столько, чтобы после поставки хватило на «заказывать на» дней. Прямые с завода склад не расходуют — не учитываем.
+  const RO_KEY = "qmt_reorder_v1";
+  const RO_DEFAULTS = {lead: 14, safety: 7, cover: 30, window: 60, round: 10};
+  function roSettings(){
+    let v = {};
+    try{ v = JSON.parse(localStorage.getItem(RO_KEY) || "{}") || {}; }catch(e){ v = {}; }
+    return Object.assign({}, RO_DEFAULTS, v);
+  }
+  function roSave(){
+    const v = {lead: +roLead.value || 0, safety: +roSafety.value || 0, cover: Math.max(1, +roCover.value || 1),
+               window: +roWindow.value || 60, round: +roRound.value || 1};
+    try{ localStorage.setItem(RO_KEY, JSON.stringify(v)); }catch(e){ /* ignore */ }
+    renderReorder();
+  }
+  const roLead = document.getElementById("roLead"), roSafety = document.getElementById("roSafety"),
+        roCover = document.getElementById("roCover"), roWindow = document.getElementById("roWindow"), roRound = document.getElementById("roRound");
+  (function initRo(){
+    const v = roSettings();
+    roLead.value = v.lead; roSafety.value = v.safety; roCover.value = v.cover; roWindow.value = String(v.window); roRound.value = String(v.round);
+    [roLead, roSafety, roCover].forEach(el => el.addEventListener("change", roSave));
+    [roWindow, roRound].forEach(el => el.addEventListener("change", roSave));
+  })();
+
+  function reorderPlan(){
+    const v = roSettings();
+    const today = todayKey();
+    const from = keyPlusDays(today, -(v.window - 1));
+    const demand = {};
+    let firstAny = "";
+    requestRows.forEach(r => {
+      if(r.status !== ST_SHIPPED) return;
+      const k = dateKey(r.shipDate);
+      if(!k || k > today) return;
+      if(!firstAny || k < firstAny) firstAny = k;
+      if(k < from) return;
+      const kit = !r.kit && kitIndex[r.codeKey];
+      (kit ? kit.parts.map(p => ({code: p.code, qty: p.qty * r.qty})) : [{code: r.codeKey, qty: r.qty}])
+        .forEach(p => { demand[p.code] = (demand[p.code] || 0) + p.qty; });
+    });
+    // если истории меньше окна — делим на реальное число дней (но не меньше недели)
+    const history = firstAny ? daysBetween(firstAny, today) + 1 : 0;
+    const days = Math.max(7, Math.min(v.window, history || v.window));
+    const out = [];
+    Object.entries(demand).forEach(([code, qty]) => {
+      if(!stockIndex[code]) return;
+      const rate = qty / days;
+      if(!(rate > 0)) return;
+      const avail = availOf(code);
+      const rop = rate * (v.lead + v.safety);
+      if(avail > rop) return;
+      const target = rate * (v.lead + v.cover);
+      const round = Math.max(1, v.round);
+      const order = Math.max(round, Math.ceil((target - avail) / round) * round);
+      const left = Math.floor(avail / rate);
+      out.push({code, name: stockIndex[code].name, shown: stockIndex[code].code, rate, avail, left, order,
+                urgent: avail <= rate * v.lead, sold: qty});
+    });
+    out.sort((a, b) => (b.urgent - a.urgent) || (a.left - b.left) || (b.rate - a.rate));
+    return {list: out, history, days, settings: v};
+  }
+
+  function renderReorder(){
+    if(!isAdmin()) return;
+    const p = reorderPlan(), host = document.getElementById("roHost"), note = document.getElementById("roNote");
+    const v = p.settings;
+    note.className = "ro-note" + (p.history && p.history < 14 ? " warn" : "");
+    note.textContent = !p.history ? "Пока нет ни одной отгрузки — рекомендации появятся, когда начнутся отгрузки."
+      : (p.history < 14 ? `⚠ История отгрузок пока ${p.history} дн. — рекомендации приблизительные. ` : "") +
+        `Спрос за ${p.days} дн. Заказываем, если остатка не хватит на ${v.lead + v.safety} дн. (поставка ${v.lead} + запас ${v.safety}); количество — чтобы после поставки хватило на ${v.cover} дн.`;
+    if(!p.list.length){
+      host.innerHTML = p.history ? `<div class="state-box" style="padding:18px"><div class="big">✅ Сейчас заказывать ничего не нужно</div><div>Всех ходовых позиций хватает дольше ${v.lead + v.safety} дн.</div></div>` : "";
+      return;
+    }
+    const outDate = n => { const k = keyPlusDays(todayKey(), n); return shortDate(k); };
+    host.innerHTML = `<table class="ro-table"><thead><tr><th></th><th>Код</th><th>Наименование</th><th class="num">Расход/день</th><th class="num">Доступно</th><th>Закончится</th><th class="num">Заказать</th></tr></thead><tbody>${
+      p.list.map(x => `<tr>
+        <td class="ro-pri ${x.urgent ? "urgent" : "soon"}">${x.urgent ? "🔴 срочно" : "🟡 пора"}</td>
+        <td class="code">${esc(x.shown)}</td><td class="name">${esc(x.name)}</td>
+        <td class="num">${fmtNum(Math.round(x.rate * 10) / 10)}</td>
+        <td class="num">${fmtNum(x.avail)}</td>
+        <td>${x.avail <= 0 ? "уже нет" : `~через ${fmtNum(x.left)} дн. (${outDate(x.left)})`}</td>
+        <td class="num order">${fmtNum(x.order)} шт</td></tr>`).join("")
+    }</tbody></table>`;
+  }
+
+  document.getElementById("roCopy").addEventListener("click", async () => {
+    const p = reorderPlan();
+    const btn = document.getElementById("roCopy");
+    if(!p.list.length){ btn.textContent = "Нечего копировать"; setTimeout(() => { btn.textContent = "📋 Скопировать заказ"; }, 1500); return; }
+    const text = `Заказ на завод от ${todayStr()}:\n` + p.list.map(x => `${x.shown} — ${x.name} — ${x.order} шт`).join("\n");
+    try{ await navigator.clipboard.writeText(text); btn.textContent = "✓ Скопировано"; }
+    catch(e){ window.prompt("Скопируйте заказ:", text); }
+    setTimeout(() => { btn.textContent = "📋 Скопировать заказ"; }, 1500);
+  });
+
+  document.querySelectorAll("[data-anperiod]").forEach(b => b.addEventListener("click", () => {
+    document.querySelectorAll("[data-anperiod]").forEach(x => x.classList.remove("active"));
+    b.classList.add("active"); anPeriod = b.dataset.anperiod; renderAnalytics();
+  }));
+  document.getElementById("anSection").addEventListener("change", renderAnalytics);
+  document.getElementById("anDirect").addEventListener("change", renderAnalytics);
+
   function renderAll(){
     availMap = computeAvailability();
     renderSnapshotBar();
@@ -1878,6 +2206,7 @@
     renderReceiptsStats(); renderReceipts();
     renderUnrealized();
     renderPricelistStats(); renderPricelist();
+    renderAnalytics();
     fillCodeDatalist();
     requestEditor.refresh();
     receiptEditor.refresh();
@@ -2345,7 +2674,7 @@
       if(isWarehouse()){
         list.forEach(r=>{
           const old = lastReqSnapshot.get(r.id);
-          if(!old && r.manager !== me){
+          if(!old && r.manager !== me && (r.status === ST_NEW || r.status === ST_DIRECT)){
             events.push({
               title: r.status === ST_DIRECT ? `🏭 Прямая отгрузка с завода №${r.id}` : `🆕 Новая заявка №${r.id}`,
               body: `${r.manager}: ${itemsShort(r)}${r.realized === "Нет" ? " · ⚠️ без реализации" : ""}`,
