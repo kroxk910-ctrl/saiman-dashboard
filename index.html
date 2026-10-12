@@ -7,6 +7,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script>
+  // тема до отрисовки, чтобы не мигало: сохранённый выбор или настройка системы
+  (function(){ try{ var t = localStorage.getItem("qmt_theme"); if(t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); }catch(e){} })();
+</script>
 <style>
   :root{
     --bg: #0f1214;
@@ -27,8 +31,81 @@
     --wait-bg: #2a2117;
     --danger: #d9614f;
     --danger-bg: #2a1916;
+    --topbar-bg: rgba(15,18,20,0.96);
+    --tip-bg: #0d1013;
+    --stripe: rgba(255,255,255,0.018);
+    --line-hover: #343b42;
+    --shine: #8fd0ff;
+    --purple: #9b8cd9;
+    --purple-bg: #241f38;
+    --shadow: rgba(0,0,0,0.5);
+    --overlay: rgba(0,0,0,0.6);
+    color-scheme: dark;
     --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
     --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  :root[data-theme="light"]{
+    --bg: #f3f5f7;
+    --panel: #ffffff;
+    --panel-2: #eef1f4;
+    --line: #dde2e7;
+    --line-soft: #eaeef2;
+    --ink: #151a1f;
+    --ink-dim: #4a545e;
+    --ink-faint: #8b949c;
+    --accent: #1f7fc4;
+    --accent-dim: #e2eff9;
+    --accent-hover: #166aa6;
+    --accent-ink: #ffffff;
+    --ok: #1d8657;
+    --ok-bg: #e2f3ea;
+    --wait: #b06f0e;
+    --wait-bg: #fbefdc;
+    --danger: #c13b28;
+    --danger-bg: #fbe5e1;
+    --topbar-bg: rgba(255,255,255,0.94);
+    --tip-bg: #ffffff;
+    --stripe: rgba(20,30,40,0.022);
+    --line-hover: #c9d0d7;
+    --shine: #7cc3f5;
+    --purple: #6b52c9;
+    --purple-bg: #eeeafb;
+    --shadow: rgba(20,30,45,0.14);
+    --overlay: rgba(20,28,36,0.38);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+    --bg: #f3f5f7;
+      --panel: #ffffff;
+      --panel-2: #eef1f4;
+      --line: #dde2e7;
+      --line-soft: #eaeef2;
+      --ink: #151a1f;
+      --ink-dim: #4a545e;
+      --ink-faint: #8b949c;
+      --accent: #1f7fc4;
+      --accent-dim: #e2eff9;
+      --accent-hover: #166aa6;
+      --accent-ink: #ffffff;
+      --ok: #1d8657;
+      --ok-bg: #e2f3ea;
+      --wait: #b06f0e;
+      --wait-bg: #fbefdc;
+      --danger: #c13b28;
+      --danger-bg: #fbe5e1;
+      --topbar-bg: rgba(255,255,255,0.94);
+      --tip-bg: #ffffff;
+      --stripe: rgba(20,30,40,0.022);
+      --line-hover: #c9d0d7;
+      --shine: #7cc3f5;
+      --purple: #6b52c9;
+      --purple-bg: #eeeafb;
+      --shadow: rgba(20,30,45,0.14);
+      --overlay: rgba(20,28,36,0.38);
+      color-scheme: light;
+    }
   }
 
   *{box-sizing:border-box;}
@@ -48,7 +125,7 @@
   /* ===== Header ===== */
   .topbar{
     position:sticky; top:0; z-index:50;
-    background:rgba(15,18,20,0.96);
+    background:var(--topbar-bg);
     backdrop-filter:blur(8px);
     border-bottom:1px solid var(--line);
   }
@@ -174,7 +251,7 @@
 
   /* ===== Modal ===== */
   .modal-overlay{
-    position:fixed; inset:0; background:rgba(0,0,0,0.6);
+    position:fixed; inset:0; background:var(--overlay);
     display:none; align-items:center; justify-content:center;
     z-index:100; padding:20px;
   }
@@ -182,7 +259,7 @@
   .modal-box{
     background:var(--panel); border:1px solid var(--line); border-radius:11px;
     width:100%; max-width:440px; padding:24px;
-    box-shadow:0 20px 60px rgba(0,0,0,0.5);
+    box-shadow:0 20px 60px var(--shadow);
   }
   .modal-header{display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;}
   .modal-title{font-size:16px; font-weight:600; color:var(--ink);}
@@ -382,7 +459,7 @@
   .vbar-top{position:absolute; top:-15px; font-family:var(--mono); font-size:10px; color:var(--ink-dim); white-space:nowrap;}
   .vlabels{display:flex; gap:2px; margin-top:4px;}
   .vlabels span{flex:1; text-align:center; font-family:var(--mono); font-size:9.5px; color:var(--ink-faint); min-width:0; overflow:hidden; white-space:nowrap;}
-  .an-tip{position:fixed; z-index:200; pointer-events:none; background:#0d1013; border:1px solid var(--line); border-radius:7px; padding:7px 10px; font-size:12px; color:var(--ink); box-shadow:0 6px 20px rgba(0,0,0,.4); display:none; max-width:280px;}
+  .an-tip{position:fixed; z-index:200; pointer-events:none; background:var(--tip-bg); border:1px solid var(--line); border-radius:7px; padding:7px 10px; font-size:12px; color:var(--ink); box-shadow:0 6px 20px var(--shadow); display:none; max-width:280px;}
   .an-tip b{font-family:var(--mono);}
   .an-tip .muted{color:var(--ink-dim);}
   .an-mgr{display:grid; grid-template-columns:1fr auto auto; gap:4px 14px; font-size:12.5px;}
@@ -432,7 +509,7 @@
     padding:7px 12px; border-bottom:1px solid var(--line-soft);
     color:var(--ink-dim); vertical-align:middle;
   }
-  tbody tr:nth-child(even){background:rgba(255,255,255,0.018);}
+  tbody tr:nth-child(even){background:var(--stripe);}
   tbody tr:last-child td{border-bottom:none;}
   tbody tr:hover{background:var(--panel-2);}
   td.code{font-family:var(--mono); font-size:12px; color:var(--accent); font-weight:500;}
@@ -482,7 +559,7 @@
   }
   .badge.new{background:var(--panel-2); color:var(--ink-dim);}
   .badge.progress{background:var(--wait-bg); color:var(--wait);}
-  .badge.stocked{background:#241f38; color:#9b8cd9;}
+  .badge.stocked{background:var(--purple-bg); color:var(--purple);}
   .badge.done{background:var(--ok-bg); color:var(--ok);}
   .badge.other{background:var(--panel-2); color:var(--ink-dim);}
   .badge::before{content:""; width:5px; height:5px; border-radius:50%; background:currentColor;}
@@ -496,7 +573,7 @@
   .status-menu{
     position:absolute; z-index:300;
     background:var(--panel); border:1px solid var(--line); border-radius:8px;
-    box-shadow:0 12px 30px rgba(0,0,0,0.45);
+    box-shadow:0 12px 30px var(--shadow);
     padding:4px; min-width:180px;
   }
   .status-menu-item{
@@ -632,7 +709,7 @@
   }
   .toast{
     background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--accent);
-    border-radius:9px; padding:12px 34px 12px 14px; box-shadow:0 14px 40px rgba(0,0,0,0.5);
+    border-radius:9px; padding:12px 34px 12px 14px; box-shadow:0 14px 40px var(--shadow);
     cursor:pointer; position:relative; animation:toastIn .22s ease;
   }
   .toast.warn{border-left-color:var(--wait);} .toast.ok{border-left-color:var(--ok);} .toast.bad{border-left-color:var(--danger);}
@@ -703,13 +780,15 @@
     .brand{gap:8px; min-width:0; flex:1 1 auto;}
     .brand-mark{font-size:14px;}
     .user-pill{font-size:14px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0; border:none;}
-    .status-cluster{width:auto; flex-wrap:nowrap; gap:6px; flex:0 0 auto;}
-    .sync-pill{padding:0; border:none; background:none; width:30px; height:34px; justify-content:center;}
+    .status-cluster{width:auto; flex-wrap:nowrap; gap:4px; flex:0 0 auto;}
+    #themeBtn{min-width:0;}
+    .sync-pill{padding:0; border:none; background:none; width:18px; height:34px; justify-content:center;}
     .sync-pill #syncText{display:none;}
     .sync-dot{width:9px; height:9px;}
     .sync-dot.err + #syncText{display:none;}
-    #tgBtn, #refreshBtn, #logoutBtn, #logoutBtnM{font-size:0 !important; width:38px; height:38px; padding:0 !important; display:inline-flex; align-items:center; justify-content:center; border-radius:10px; flex-shrink:0;}
+    #tgBtn, #refreshBtn, #logoutBtn, #logoutBtnM, #themeBtn{font-size:0 !important; width:34px; height:36px; padding:0 !important; display:inline-flex; align-items:center; justify-content:center; border-radius:10px; flex-shrink:0;}
     #tgBtn::before{content:"🔔"; font-size:17px;}
+    #themeBtn{font-size:16px !important;}
     #refreshBtn::before{content:"↻"; font-size:19px; line-height:1;}
     #logoutBtnM::before{content:"⏻"; font-size:16px; line-height:1;}
     .brand #logoutBtn{display:none;}
@@ -839,14 +918,14 @@
   .tab-ink{position:absolute; bottom:-1px; left:0; height:2px; width:0; background:var(--accent); border-radius:2px 2px 0 0;
            transition:transform .28s cubic-bezier(.2,.8,.2,1), width .28s cubic-bezier(.2,.8,.2,1); pointer-events:none;}
   .tabs.has-ink .tab-btn.active{border-bottom-color:transparent;}
-  .brand-mark{background:linear-gradient(120deg, var(--accent) 0%, #8fd0ff 50%, var(--accent) 100%); background-size:200% 100%;
+  .brand-mark{background:linear-gradient(120deg, var(--accent) 0%, var(--shine) 50%, var(--accent) 100%); background-size:200% 100%;
               -webkit-background-clip:text; background-clip:text; color:transparent;}
   tbody tr{transition:background-color .12s ease;}
   .filter-chip, .refresh-btn, .badge-btn, .ok-btn, .small-btn, .row-del, .item-remove{transition:background-color .15s ease, border-color .15s ease, color .15s ease, transform .12s ease;}
   .filter-chip:active, .refresh-btn:active, .small-btn:active, .ok-btn:active{transform:scale(0.97);}
   .stat{transition:background-color .2s ease;}
   .an-card, .table-wrap, .stats{transition:border-color .2s ease;}
-  .an-card:hover{border-color:#343b42;}
+  .an-card:hover{border-color:var(--line-hover);}
   :focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:6px;}
   .kbd-hint{font-family:var(--mono); font-size:10.5px; color:var(--ink-faint); border:1px solid var(--line); border-radius:4px; padding:0 5px; margin-left:6px;}
 
@@ -895,6 +974,11 @@
       .badge-btn:hover{filter:brightness(1.15);}
     }
   }
+
+  /* переключатель темы */
+  #themeBtn{min-width:38px; padding-left:10px; padding-right:10px;}
+  :root[data-theme="light"] .brand-mark, :root[data-theme="light"] .login-logo{filter:saturate(1.1);}
+  .theme-anim, .theme-anim *{transition:background-color .25s ease, border-color .25s ease, color .25s ease !important;}
 </style>
 </head>
 <body>
@@ -947,6 +1031,7 @@
         <span id="syncText">Обновляется…</span>
       </div>
       <button class="refresh-btn" id="tgBtn" title="Уведомления в Telegram и в браузере">🔔 Уведомления</button>
+      <button class="refresh-btn" id="themeBtn" title="Светлая / тёмная тема">☀️</button>
       <button class="refresh-btn" id="refreshBtn">↻ Обновить</button>
       <button class="refresh-btn mobile-logout" id="logoutBtnM" title="Выйти" style="display:none">Выйти</button>
     </div>
@@ -2394,6 +2479,27 @@
   document.getElementById("anSection").addEventListener("change", () => { animateAnalytics(); renderAnalytics(); });
   document.getElementById("anDirect").addEventListener("change", () => { animateAnalytics(); renderAnalytics(); });
 
+
+
+  // ---------- Тема: светлая / тёмная ----------
+  const themeBtn = document.getElementById("themeBtn");
+  const sysLight = window.matchMedia ? window.matchMedia("(prefers-color-scheme: light)") : null;
+  const currentTheme = () => document.documentElement.getAttribute("data-theme") || (sysLight && sysLight.matches ? "light" : "dark");
+  function paintThemeBtn(){
+    const t = currentTheme();
+    themeBtn.textContent = t === "light" ? "🌙" : "☀️";
+    themeBtn.title = t === "light" ? "Включить тёмную тему" : "Включить светлую тему";
+  }
+  themeBtn.addEventListener("click", () => {
+    const next = currentTheme() === "light" ? "dark" : "light";
+    document.documentElement.classList.add("theme-anim");
+    document.documentElement.setAttribute("data-theme", next);
+    try{ localStorage.setItem("qmt_theme", next); }catch(e){ /* ignore */ }
+    paintThemeBtn();
+    setTimeout(() => document.documentElement.classList.remove("theme-anim"), 350);
+  });
+  if(sysLight && sysLight.addEventListener) sysLight.addEventListener("change", paintThemeBtn);
+  paintThemeBtn();
 
   // ---------- Движение: полоска под активной вкладкой, появление вида, подсветка изменений ----------
   const tabsEl = document.querySelector(".tabs");
