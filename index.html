@@ -2084,7 +2084,7 @@
       return;
     }
     if(state === "linked"){
-      tgBody.innerHTML = `<div class="tg-linked">✅ Telegram подключён. Сюда приходят ${tgWhat()}.</div>
+      tgBody.innerHTML = `<div class="tg-linked">✅ Telegram подключён. Сюда приходят ${tgWhat()}.</div><p class="modal-note">📄 Можно переслать боту <b>счёт на оплату</b> PDF из 1С — он сам сделает заявку на склад.</p>
         <div class="modal-actions" style="margin-top:10px">
           <button class="modal-btn danger" id="tgUnlink">Отключить Telegram</button>
         </div>`;
