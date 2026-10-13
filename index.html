@@ -994,6 +994,7 @@
   .up-list{max-height:280px; overflow:auto; border:1px solid var(--line); border-radius:8px; margin-bottom:12px;}
   .up-list table{font-size:12px;} .up-list td, .up-list th{padding:5px 10px;}
   .up-list .dn{color:var(--wait);} .up-list .upn{color:var(--ok);}
+  .recon-hint{font-size:12px;color:var(--ink-dim);margin-top:3px;line-height:1.35;white-space:normal}
   .up-note{font-size:12px; color:var(--ink-faint); margin:-4px 0 10px;}
   .up-opts{display:flex; flex-wrap:wrap; align-items:center; gap:10px 20px; margin-bottom:12px; font-size:13px; color:var(--ink-dim);}
   .up-opts input[type="date"]{background:var(--bg); border:1px solid var(--line); color:var(--ink); padding:6px 8px; border-radius:6px; font-family:var(--sans);}
@@ -1311,7 +1312,7 @@
     <div class="form-error" id="stockUpError"></div>
     <div id="stockUpPreview"></div>
     <div class="up-opts" id="stockUpOpts" hidden>
-      <label>Дата выгрузки <input type="date" id="stockUpDate"></label>
+      <label title="Когда сформирован отчёт в 1С: реализации до этого момента в нём уже учтены">Выгрузка из 1С <input type="date" id="stockUpDate"> <input type="time" id="stockUpTime"></label>
       <label class="an-check"><input type="checkbox" id="stockUpAddNew" checked> добавить новые позиции в конец листа</label>
     </div>
     <div class="form-success" id="stockUpOk"></div>
@@ -1425,6 +1426,11 @@
     if(m) return `${m[1]}-${m[2]}-${m[3]}`;
     return "";
   }
+  // Моменты «yyyy-MM-dd HH:mm» (как на сервере): выгрузка без времени — начало дня, событие без времени — конец дня
+  const timeOfStr = s => { const m = String(s ?? "").match(/(\d{1,2}):(\d{2})/); return m ? m[1].padStart(2,"0") + ":" + m[2] : ""; };
+  const snapAtF = s => { const d = dateKey(s); return d ? d + " " + (timeOfStr(s) || "00:00") : ""; };
+  const eventAtF = s => { const d = dateKey(s); return d ? d + " " + (timeOfStr(s) || "23:59") : ""; };
+  const snapNow = () => snapshot.key || (todayKey() + " 00:00");
   function todayStr(){
     const d = new Date();
     return `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;
@@ -1559,7 +1565,7 @@
         comment:(r[6]||"").trim(), shipDate:(r[7]||"").trim(), changedBy:(r[8]||"").trim(),
         realized:(r[9]||"").trim(), realizedBy:(r[10]||"").trim(), realizedAt:(r[11]||"").trim(),
         type:(r[12]||"").trim() === TYPE_FACTORY ? TYPE_FACTORY : "Склад",
-        kit:(r[13]||"").trim()
+        kit:(r[13]||"").trim(), createdAt:(r[14]||"").trim()
       });
     }
     return out;
@@ -1600,7 +1606,7 @@
       const r = rows[i];
       const code = (r[1]||"").trim();
       if(!code) continue;
-      out.push({sheetRow:i+1, date:(r[0]||"").trim(), dateKey:dateKey(r[0]), code, codeKey:normCode(code),
+      out.push({sheetRow:i+1, date:(r[0]||"").trim(), dateKey:dateKey(r[0]), atKey:eventAtF((r[5]||"").trim() || r[0]), code, codeKey:normCode(code),
                 qty:parseNum(r[2]), who:(r[3]||"").trim(), comment:(r[4]||"").trim()});
     }
     return out;
@@ -1624,7 +1630,7 @@
   // ---------- Доступный остаток (та же формула, что на сервере) ----------
   // остаток из 1С − заявки в работе − отгружено с даты выгрузки + посадки с даты выгрузки
   function computeAvailability(){
-    const snap = snapshot.key || todayKey();
+    const snap = snapNow();
     const out = {};
     const slot = code => (out[code] = out[code] || {morning:0, reserved:0, shipped:0, received:0, available:0});
     stockRows.forEach(r=>{ if(!r.isSection && r.key) slot(normCode(r.key)).morning += r.qty; });
@@ -1633,7 +1639,7 @@
       if(HOLD_STATUSES.includes(r.status)) slot(r.codeKey).reserved += r.qty;
       else if(r.status === ST_SHIPPED) slot(r.codeKey).shipped += r.qty;
     });
-    receiptRows.forEach(rc=>{ if(rc.dateKey && rc.dateKey >= snap) slot(rc.codeKey).received += rc.qty; });
+    receiptRows.forEach(rc=>{ if(rc.atKey && rc.atKey >= snap) slot(rc.codeKey).received += rc.qty; });
     Object.values(out).forEach(s=>{ s.available = s.morning + s.received - s.reserved - s.shipped; });
     return out;
   }
@@ -1643,7 +1649,7 @@
   function countsAgainstStock(r, snap){
     if(r.status === ST_CANCELLED || r.status === ST_DIRECT) return false;
     if(r.realized === "Нет" && !r.realizedAt) return true;
-    const realKey = r.realized === "Нет" ? dateKey(r.realizedAt) : dateKey(r.date);
+    const realKey = r.realized === "Нет" ? eventAtF(r.realizedAt) : eventAtF(r.createdAt || r.date);
     return !realKey || !snap || realKey >= snap;
   }
   function shippedStillCounts(shipKey, realized, realKey, snap){
@@ -1677,7 +1683,7 @@
       return;
     }
     const stale = snapshot.key && snapshot.key < todayKey();
-    bar.innerHTML = `<span>Остатки из 1С на <span class="snap-date">${esc(snapshot.disp)}</span> · доступно = остаток − заявки в работе − отгружено + посадки <span title="Заявки, по которым реализация проведена раньше этой даты, уже вычтены самой 1С — второй раз не вычитаем" style="cursor:help; border-bottom:1px dotted var(--ink-faint)">(без двойного вычета)</span></span>`
+    bar.innerHTML = `<span>Остатки из 1С на <span class="snap-date">${esc(snapshot.disp)}</span> · доступно = остаток − заявки в работе − отгружено + посадки <span title="Заявки, по которым реализация проведена раньше этой выгрузки, уже вычтены самой 1С — второй раз не вычитаем" style="cursor:help; border-bottom:1px dotted var(--ink-faint)">(без двойного вычета)</span></span>`
       + (stale ? `<span class="snap-warn">Сегодня остатки ещё не загружали</span>` : "")
       + (opsError ? `<span class="snap-warn">Заявки не загрузились — остаток показан без учёта заявок и посадок</span>` : "");
   }
@@ -2108,14 +2114,14 @@
       host.innerHTML = `<div class="state-box"><div class="big">${receiptRows.length ? "Ничего не найдено" : "Посадок пока не было"}</div></div>`;
       return;
     }
-    const snap = snapshot.key || todayKey();
+    const snap = snapNow();
     let html = `<table><thead><tr>
       <th>Дата</th><th>Код</th><th>Наименование</th><th class="num">Кол-во</th><th>Кто</th><th>Комментарий</th><th></th>
     </tr></thead><tbody>`;
     rows.forEach(r=>{
-      const counted = r.dateKey && r.dateKey >= snap;
+      const counted = r.atKey && r.atKey >= snap;
       const name = stockIndex[r.codeKey] ? stockIndex[r.codeKey].name : "";
-      html += `<tr class="${counted ? '' : 'old-row'}" title="${counted ? 'Учтено в доступном остатке' : 'Раньше даты выгрузки — уже есть в остатках 1С'}">
+      html += `<tr class="${counted ? '' : 'old-row'}" title="${counted ? 'Учтено в доступном остатке' : 'Раньше выгрузки — уже есть в остатках 1С'}">
         <td>${esc(r.date)}</td>
         <td class="code">${esc(r.code)}</td>
         <td class="name">${esc(name)}</td>
@@ -2136,8 +2142,8 @@
   }
 
   function renderReceiptsStats(){
-    const snap = snapshot.key || todayKey();
-    const counted = receiptRows.filter(r => r.dateKey && r.dateKey >= snap);
+    const snap = snapNow();
+    const counted = receiptRows.filter(r => r.atKey && r.atKey >= snap);
     document.getElementById("rcStatCount").textContent = counted.length;
     document.getElementById("rcStatQty").textContent = fmtNum(counted.reduce((a,r)=>a+r.qty, 0));
     document.getElementById("rcStatCodes").textContent = new Set(counted.map(r=>r.codeKey)).size;
@@ -2799,7 +2805,7 @@
   }
   const upEls = {overlay: document.getElementById("stockUpOverlay"), file: document.getElementById("stockFile"), drop: document.getElementById("stockDrop"),
     dropText: document.getElementById("stockDropText"), err: document.getElementById("stockUpError"), prev: document.getElementById("stockUpPreview"),
-    opts: document.getElementById("stockUpOpts"), date: document.getElementById("stockUpDate"), addNew: document.getElementById("stockUpAddNew"),
+    opts: document.getElementById("stockUpOpts"), date: document.getElementById("stockUpDate"), time: document.getElementById("stockUpTime"), addNew: document.getElementById("stockUpAddNew"),
     ok: document.getElementById("stockUpOk"), submit: document.getElementById("stockUpSubmit")};
   const isoToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
   function openStockUpload(){
@@ -2807,6 +2813,7 @@
     upEls.submit.disabled = true; upEls.submit.textContent = "Загрузить";
     upEls.dropText.innerHTML = "<b>Выберите PDF</b> или перетащите его сюда";
     hideMsg(upEls.err); hideMsg(upEls.ok); upEls.date.value = isoToday();
+    { const d = new Date(); upEls.time.value = `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; }
     openOverlay(upEls.overlay);
     loadPdfJs().catch(() => {});   // заранее, пока выбирают файл
   }
@@ -2856,6 +2863,24 @@
     upEls.addNew.parentElement.hidden = !d.fresh.length;
     upEls.submit.disabled = false;
   }
+  /** Сверка после загрузки: что дашборд ожидал увидеть в 1С и что пришло. */
+  function renderRecon(rc){
+    if(!rc){ upEls.prev.innerHTML = ""; upEls.opts.hidden = true; return; }
+    upEls.opts.hidden = true;
+    if(rc.skipped){ upEls.prev.innerHTML = `<div class="up-note">Сверка: ${esc(rc.skipped)}.</div>`; return; }
+    if(!rc.count){
+      upEls.prev.innerHTML = `<div class="up-sum"><span class="up-chip new">сверка ${esc(rc.from)} → ${esc(rc.to)}: <b>всё сошлось ✓</b></span></div>
+        <div class="up-note">Остатки в 1С совпали с тем, что ожидал дашборд: все заявки и посадки учтены.${rc.fresh ? ` Новые позиции из 1С (${rc.fresh}) в сверку не входят.` : ""}</div>`;
+      return;
+    }
+    const sign = n => (n > 0 ? "+" : "") + fmtNum(n);
+    upEls.prev.innerHTML = `<div class="up-sum"><span class="up-chip zero">сверка ${esc(rc.from)} → ${esc(rc.to)}: расхождений <b>${rc.count}</b></span></div>
+      <div class="up-note">«Ждали» — доступный остаток в дашборде до загрузки, «В 1С» — после. Разница значит, что в 1С было движение мимо дашборда или наоборот. Список сохранён на листе «Сверка остатков», админам ушло сообщение в Telegram.${rc.fresh ? ` Новые позиции из 1С (${rc.fresh}) в сверку не входят.` : ""}</div>
+      <div class="up-list"><table><thead><tr><th>Код</th><th>Наименование · что проверить</th><th class="num">Ждали</th><th class="num">В 1С</th><th class="num">Разница</th></tr></thead><tbody>${
+        rc.items.map(x => `<tr><td class="code">${esc(x.code)}</td><td class="name">${esc(x.name)}<div class="recon-hint">${esc(x.hint)}</div></td><td class="num">${fmtNum(x.expected)}</td><td class="num">${fmtNum(x.got)}</td>
+          <td class="num ${x.diff > 0 ? "upn" : "dn"}">${sign(x.diff)}</td></tr>`).join("")
+      }</tbody></table></div>`;
+  }
   upEls.file.addEventListener("change", () => handleStockFile(upEls.file.files[0]));
   ["dragenter", "dragover"].forEach(ev => upEls.drop.addEventListener(ev, e => { e.preventDefault(); upEls.drop.classList.add("over"); }));
   ["dragleave", "drop"].forEach(ev => upEls.drop.addEventListener(ev, e => { e.preventDefault(); upEls.drop.classList.remove("over"); }));
@@ -2878,9 +2903,11 @@
     if(!m){ showMsg(upEls.err, "Укажите дату выгрузки"); return; }
     upEls.submit.disabled = true; upEls.submit.textContent = "Загружаю…"; hideMsg(upEls.err);
     try{
-      const r = await api("uploadStock", {date: `${m[3]}.${m[2]}.${m[1]}`, addNew: upEls.addNew.checked,
+      const tm = /^\d{2}:\d{2}$/.test(upEls.time.value) ? " " + upEls.time.value : "";
+      const r = await api("uploadStock", {date: `${m[3]}.${m[2]}.${m[1]}${tm}`, addNew: upEls.addNew.checked,
         items: stockUpItems.map(it => ({code: it.code, name: it.name, unit: it.unit, qty: it.qty}))});
       showMsg(upEls.ok, `✓ Остатки на ${r.date} загружены: изменено ${r.updated}, обнулено ${r.zeroed}, добавлено ${r.added}.`);
+      renderRecon(r.recon);
       upEls.submit.textContent = "Готово";
       stockUpItems = null;
       syncAll(true);
@@ -2992,7 +3019,7 @@
       stockRows = st.rows;
       stockIndex = {};
       stockRows.forEach(r => { if(!r.isSection && r.key && !stockIndex[normCode(r.key)]) stockIndex[normCode(r.key)] = r; });
-      snapshot = {disp: st.snapDisp, key: dateKey(st.snapDisp)};
+      snapshot = {disp: st.snapDisp, key: snapAtF(st.snapDisp)};
       pricelistRows = buildPricelist(data.pricelist);
       opsError = "";
       requestRows = buildRequestRows(data.requests);
