@@ -751,6 +751,11 @@
   .req-item .q{color:var(--ink-dim);}
   .req-meta{font-size:11px; color:var(--ink-faint); margin-top:4px; white-space:nowrap;}
   tr.old-row td{opacity:.5;}
+  .item-modem{font-size:12px; color:var(--ink-dim); margin-top:4px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
+  .item-modem b{font-family:var(--mono); color:var(--ink);}
+  .item-modem .ok{color:var(--ok);}
+  .modem-set{display:flex; align-items:center; gap:6px; margin-top:10px; flex-wrap:wrap; font-size:12.5px; color:var(--ink-dim);}
+  .modem-set select{font:inherit; padding:4px 8px; border-radius:6px; border:1px solid var(--line); background:var(--panel-2); color:var(--ink);}
   .hidden-panel{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 12px; font-size:13px; color:var(--ink-dim);}
   .hidden-panel select{font:inherit; padding:5px 8px; border-radius:6px; border:1px solid var(--line); background:var(--panel-2); color:var(--ink); max-width:100%;}
   .hidden-panel-note{font-size:12px; color:var(--ink-faint); flex-basis:100%;}
@@ -1594,6 +1599,7 @@
   let peopleList = [];     // имена сотрудников (без PIN) — кому склад выдал без заявки
   let adjRows = [];        // лист «Корректировки»
   let hiddenKeys = new Set();   // лист «Скрытые позиции» — не на продажу
+  let modemSheet = {};          // лист «Модемы к счётчикам»: СЧЁТЧИК → МОДЕМ ("" = модема нет)
   const isHiddenRow = r => r && r.key && hiddenKeys.has(normCode(r.key));
   let pricelistRows = [];
   let availMap = {};       // CODE -> {morning, reserved, shipped, received, available}
@@ -1920,6 +1926,10 @@
             <div><span class="detail-label">В коробке</span><span class="detail-value">${esc(r.box) || "—"}</span></div>
             <div><span class="detail-label">Если нет — будут</span><span class="detail-value">${esc(r.note) || "—"}</span></div>
           </div>
+          ${stockGroupOf(r) === "meter" ? (() => { const m = modemFor(r.key), ms = m && stockIndex[m];
+            return `<div class="modem-set">📶 Модем к счётчику: <b>${m ? esc(ms ? ms.code || m : m) + (ms ? " · " + esc(ms.name) : "") : "не указан"}</b>${isAdmin()
+              ? ` <select data-modemfor="${esc(r.key)}"><option value="">— без модема —</option>${modemsList().map(x => `<option value="${esc(x.key)}"${normCode(x.key) === m ? " selected" : ""}>${esc(x.code || x.name)} · ${esc(x.name)}</option>`).join("")}</select>
+                 <button class="adj-btn" data-modemsave="${esc(r.key)}">Сохранить</button>` : ""}</div>`; })() : ""}
           ${isAdmin() ? `<button class="adj-btn hide-btn" data-hidekey="${esc(r.key)}" data-hidecode="${esc(r.code)}" data-hidename="${esc(r.name)}" data-hideto="${isHiddenRow(r) ? "0" : "1"}">${isHiddenRow(r) ? "👁 Вернуть в дашборд" : "🙈 Скрыть из дашборда (не на продажу)"}</button>` : ""}
         </td>
       </tr>`;
@@ -1928,6 +1938,14 @@
     host.innerHTML = html;
     wireExpandableRows(host);
     wireSort(host, stockSort, renderStock);
+    host.querySelectorAll("[data-modemsave]").forEach(b => b.addEventListener("click", async e => {
+      e.stopPropagation();
+      const sel = host.querySelector(`[data-modemfor="${CSS.escape(b.dataset.modemsave)}"]`);
+      b.disabled = true; b.textContent = "…";
+      try{ await api("setMeterModem", {meter: b.dataset.modemsave, modem: sel ? sel.value : ""}); await syncAll(true); }
+      catch(err){ alert("Не получилось: " + err.message); b.disabled = false; b.textContent = "Сохранить"; }
+    }));
+    host.querySelectorAll("[data-modemfor]").forEach(x => x.addEventListener("click", e => e.stopPropagation()));
     host.querySelectorAll("[data-hidekey]").forEach(b => b.addEventListener("click", e => {
       e.stopPropagation();
       setHiddenItems([{code: b.dataset.hidecode, name: b.dataset.hidename}], b.dataset.hideto === "1", b);
@@ -2535,7 +2553,7 @@
     return {stock: rows(data.stock), pricelist: rows(data.pricelist), requests: rows(data.requests),
             receipts: rows(data.receipts), kits: rows(data.kits), shortage: rows(data.shortage),
             sales: rows(data.sales), salesPeriods: Array.isArray(data.salesPeriods) ? data.salesPeriods : [], catalog: rows(data.catalog),
-            people: Array.isArray(data.people) ? data.people : [], adjustments: rows(data.adjustments), hidden: rows(data.hidden)};
+            people: Array.isArray(data.people) ? data.people : [], adjustments: rows(data.adjustments), hidden: rows(data.hidden), modems: rows(data.modems)};
   }
   function forceRelogin(){
     try{ sessionStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(PAYLOAD_KEY); }catch(e){ /* ignore */ }
@@ -2617,6 +2635,19 @@
     return out;
   }
   function kitOf(code){ return kitIndex[normCode(code)] || null; }
+  /** Модем к счётчику: сначала лист «Модемы к счётчикам», иначе из «Комплектов» (часть-счётчик + часть-модем). */
+  function modemFor(code){
+    const k = normCode(code);
+    if(k in modemSheet) return modemSheet[k] || "";
+    for(const kit of Object.values(kitIndex)){
+      if(!kit.parts.some(p => p.code === k)) continue;
+      const m = kit.parts.find(p => p.code !== k && stockIndex[p.code] && stockGroupOf(stockIndex[p.code]) === "modem");
+      if(m) return m.code;
+    }
+    return "";
+  }
+  const isMeterCode = code => !!stockIndex[normCode(code)] && stockGroupOf(stockIndex[normCode(code)]) === "meter";
+  const modemsList = () => stockRows.filter(r => !r.isSection && r.key && stockGroupOf(r) === "modem");
   /** Сколько можно собрать из частей. */
   function kitBuildable(kit){
     return Math.max(0, Math.min(...kit.parts.map(p => stockIndex[p.code] ? Math.floor(availOf(p.code) / p.qty) : 0)));
@@ -3327,6 +3358,8 @@
       receiptRows = buildReceipts(data.receipts);
       peopleList = data.people || [];
       adjRows = buildAdjustments(data.adjustments);
+      modemSheet = {};
+      (data.modems || []).slice(1).forEach(r => { const m = normCode(r[0]); if(m) modemSheet[m] = normCode(r[1]); });
       hiddenKeys = new Set((data.hidden || []).slice(1).map(r => normCode((r[0] || "").trim() || (r[1] || "").trim())).filter(Boolean));
       kitIndex = buildKits(data.kits);
       shortageRows = buildShortage(data.shortage);
@@ -3414,9 +3447,30 @@
   // Редактор позиций (код + кол-во) с подсказкой о доступном остатке
   function createItemsEditor(listEl, addBtn, mode, isDirect){
     const direct = () => !!(isDirect && isDirect());
+    // подсказка складу: какой модем идёт к счётчику (в приходе — кнопка добавить его строкой)
+    function modemHint(block, code){
+      const box = block.querySelector(".item-modem");
+      if(!box) return;
+      box.hidden = true; box.innerHTML = "";
+      if(mode === "request" || !code || !isMeterCode(code)) return;
+      const m = modemFor(code);
+      if(!m){ box.hidden = false; box.innerHTML = `📶 Модем к этому счётчику не указан${isAdmin() ? " — укажите в карточке счётчика в остатках" : " — уточните у Александра"}`; return; }
+      const ms = stockIndex[m], qty = block.querySelector(".item-qty").value.replace(/\s/g, "");
+      const inList = collect().some(it => normCode(it.code) === m);
+      box.hidden = false;
+      box.innerHTML = `📶 Модем к нему: <b>${esc(ms ? ms.code || m : m)}</b>${ms ? " · " + esc(ms.name) : ""}` +
+        (inList ? ` <span class="ok">— уже в списке ✓</span>` : mode === "receipt" ? ` <button type="button" class="adj-btn modem-add">+ добавить ${esc(m)}${/^\d+$/.test(qty) ? " × " + qty : ""}</button>` : "");
+      const btn = box.querySelector(".modem-add");
+      if(btn) btn.addEventListener("click", () => {
+        const nb = add(); nb.querySelector(".item-code").value = m;
+        if(/^\d+$/.test(qty)) nb.querySelector(".item-qty").value = qty;
+        refresh();
+      });
+    }
     function hintFor(block){
       const h = block.querySelector(".item-hint");
       const code = normCode(block.querySelector(".item-code").value);
+      modemHint(block, code);
       h.className = "item-hint";
       if(!code){ h.textContent = ""; return; }
       const s = stockIndex[code];
@@ -3481,7 +3535,7 @@
           <input type="text" class="item-code" list="${mode === "request" ? "requestCodes" : mode === "receipt" ? "receiptCodes" : "stockCodes"}" placeholder="Код" autocomplete="off">
           <input type="text" class="item-qty" inputmode="numeric" placeholder="Кол-во">
           <button type="button" class="item-remove" title="Удалить позицию">×</button>
-        </div>${mode === "receipt" ? `<input type="text" class="item-name" placeholder="Наименование новой позиции (как в 1С)" hidden>` : ""}<div class="item-hint"></div>`;
+        </div>${mode === "receipt" ? `<input type="text" class="item-name" placeholder="Наименование новой позиции (как в 1С)" hidden>` : ""}<div class="item-hint"></div><div class="item-modem" hidden></div>`;
       listEl.appendChild(block);
       const nmInp = block.querySelector(".item-name");
       if(nmInp) nmInp.addEventListener("input", () => { nmInp.dataset.auto = ""; });   // вписали сами — не перезаписываем из 1С
