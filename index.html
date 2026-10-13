@@ -1982,17 +1982,25 @@
     document.getElementById("stockCount").textContent = data.length;
   }
 
+  /** Позиции для подсказок кода: без скрытых, в порядке остатков (электросчётчики → … → модемы, внутри — ходовые). */
+  function suggestRows(){
+    const pop = popularity(), gi = r => STOCK_GROUP_ORDER.indexOf(stockGroupOf(r)), pk = r => pop[normCode(r.key)] || 0;
+    return stockRows.filter(r => !r.isSection && r.key && !isHiddenRow(r))
+      .sort((a, b) => (gi(a) - gi(b)) || (pk(b) - pk(a)) || (availOf(b.key) - availOf(a.key)) || a.name.localeCompare(b.name, "ru"));
+  }
   function fillCodeDatalist(){
     const dl = document.getElementById("stockCodes");
-    dl.innerHTML = stockRows.filter(r=>!r.isSection && r.key)
+    const ordered = suggestRows();
+    dl.innerHTML = ordered
       .map(r => `<option value="${esc(r.key)}">${r.code ? esc(r.name) + " · " : "без артикула · "}доступно ${fmtNum(availOf(r.key))}</option>`).join("");
+    // + позиции из справочника 1С, которых нет в остатках (скрытые сюда не попадают: они есть в остатках)
     const inStockKeys = new Set(stockRows.filter(r => !r.isSection && r.key).map(r => latinCode(r.key)));
     document.getElementById("receiptCodes").innerHTML = dl.innerHTML +
       Object.values(catalogByCode).filter(c => !inStockKeys.has(latinCode(c.code)))
         .map(c => `<option value="${esc(c.code)}">из 1С · ${esc(c.name)}</option>`).join("") +
       Object.values(catalogByName).filter(c => !inStockKeys.has(latinCode(c.name)))
         .map(c => `<option value="${esc(c.name)}">из 1С · без артикула</option>`).join("");
-    document.getElementById("requestCodes").innerHTML = stockRows.filter(r=>!r.isSection && r.key && !isHiddenRow(r))
+    document.getElementById("requestCodes").innerHTML = ordered
       .map(r => { const k = kitIndex[normCode(r.key)];
         const tail = k ? `готовых ${fmtNum(availOf(r.key))} + можно собрать ${fmtNum(kitBuildable(k))} (${esc(kitPartsText(k))})` : `доступно ${fmtNum(availOf(r.key))}`;
         return `<option value="${esc(r.key)}">${r.code ? esc(r.name) + " · " : "без артикула · "}${tail}</option>`; }).join("") + Object.values(kitIndex)
