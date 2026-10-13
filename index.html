@@ -751,6 +751,18 @@
   .req-item .q{color:var(--ink-dim);}
   .req-meta{font-size:11px; color:var(--ink-faint); margin-top:4px; white-space:nowrap;}
   tr.old-row td{opacity:.5;}
+  .rev-head{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:0 0 14px; font-size:13.5px; color:var(--ink-dim);}
+  .rev-head b{color:var(--ink);}
+  .rev-progress{flex:1 1 220px; height:8px; border-radius:6px; background:var(--panel-2); overflow:hidden; border:1px solid var(--line);}
+  .rev-progress > span{display:block; height:100%; background:var(--accent); transition:width .3s ease;}
+  .rev-input{width:84px; font:inherit; font-family:var(--mono); text-align:right; padding:5px 8px; border-radius:6px; border:1px solid var(--line); background:var(--panel-2); color:var(--ink);}
+  .rev-input:focus{outline:none; border-color:var(--accent);}
+  .rev-input.saved{border-color:var(--ok);}
+  .rev-input.err{border-color:var(--danger);}
+  .rev-diff{font-family:var(--mono); font-weight:600;}
+  .rev-diff.minus{color:var(--danger);} .rev-diff.plus{color:var(--wait);} .rev-diff.zero{color:var(--ok);}
+  .rev-reason{font-size:12px; color:var(--ink-dim); line-height:1.45; margin-top:2px;}
+  .rev-actions{display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;}
   .item-modem{font-size:12px; color:var(--ink-dim); margin-top:4px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
   .item-modem b{font-family:var(--mono); color:var(--ink);}
   .item-modem .ok{color:var(--ok);} .item-modem .bad{color:var(--danger);}
@@ -1083,6 +1095,7 @@
     <button class="tab-btn" data-view="requests"><span id="requestsTabLabel">Заявки</span> <span class="count" id="requestsCount">—</span></button>
     <button class="tab-btn" data-view="receipts" data-warehouse-only hidden>Приходы <span class="count" id="receiptsCount">—</span></button>
     <button class="tab-btn" data-view="adjustments" data-warehouse-only hidden>Корректировки <span class="count" id="adjCount">—</span></button>
+    <button class="tab-btn" data-view="revision" data-warehouse-only hidden>Ревизия <span class="count" id="revCount">—</span></button>
     <button class="tab-btn" data-view="pricelist">Прайс-лист <span class="count" id="pricelistCount">—</span></button>
     <button class="tab-btn" data-view="analytics" data-admin-only hidden>Аналитика</button>
   </div>
@@ -1212,6 +1225,20 @@
       <button class="new-order-btn" id="newAdjBtn" hidden>+ Корректировка</button>
     </div>
     <div class="table-wrap"><div id="adjTableHost"><div class="state-box"><div class="spinner"></div><div class="big">Загружаем…</div></div></div></div>
+  </section>
+
+  <!-- ============ REVISION VIEW: еженедельная ревизия ============ -->
+  <section class="view" id="view-revision">
+    <div class="rev-head" id="revHead"></div>
+    <div class="toolbar" id="revToolbar">
+      <div class="search-box"><input type="text" id="revSearch" placeholder="Поиск по коду или наименованию…"></div>
+      <button class="filter-chip active" data-revfilter="all">Все</button>
+      <button class="filter-chip" data-revfilter="todo">Не посчитано</button>
+      <button class="filter-chip" data-revfilter="diff">Расхождения</button>
+      <div class="toolbar-spacer"></div>
+      <span class="row-count" id="revRowCount"></span>
+    </div>
+    <div class="table-wrap"><div id="revTableHost"><div class="state-box"><div class="spinner"></div><div class="big">Загружаем…</div></div></div></div>
   </section>
 
   <!-- ============ ANALYTICS VIEW (только админ) ============ -->
@@ -1602,6 +1629,7 @@
   let adjRows = [];        // лист «Корректировки»
   let hiddenKeys = new Set();   // лист «Скрытые позиции» — не на продажу
   let modemSheet = {};          // лист «Модемы к счётчикам»: СЧЁТЧИК → МОДЕМ ("" = модема нет)
+  let revisions = [], revCountRows = [];   // листы «Ревизии» и «Ревизия — подсчёт»
   const isHiddenRow = r => r && r.key && hiddenKeys.has(normCode(r.key));
   let pricelistRows = [];
   let availMap = {};       // CODE -> {morning, reserved, shipped, received, available}
@@ -2395,6 +2423,138 @@
     }));
   }
 
+  // ---------- Ревизия ----------
+  let revFilter = "all";
+  const shelfOf = code => { const a = availMap[normCode(code)]; return a ? a.available + a.reserved : 0; };   // как на сервере
+  const openRev = () => revisions.filter(r => r.status === "Идёт").pop() || null;
+  function revisionPairs(counts){   // пересорт: в одной группе минус и плюс на одно количество
+    const pairs = {};
+    counts.filter(c => c.diff < 0).forEach(m => counts.filter(c => c.diff === -m.diff).forEach(p => {
+      const a = stockIndex[m.key], b = stockIndex[p.key];
+      if(a && b && stockGroupOf(a) === stockGroupOf(b) && !pairs[m.key]) pairs[m.key] = p;
+    }));
+    return pairs;
+  }
+  function renderRevision(){
+    const head = document.getElementById("revHead"), host = document.getElementById("revTableHost");
+    if(host.contains(document.activeElement) && document.activeElement.classList.contains("rev-input")) return;   // не мешаем вводу
+    const rev = openRev(), staff = isWarehouse();
+    const last = rev || revisions.filter(r => r.status === "Завершена").pop() || null;
+    const rows = suggestRows();
+    document.getElementById("revCount").textContent = rev ? "идёт" : "—";
+    document.getElementById("revToolbar").hidden = !last;
+    if(!last){
+      head.innerHTML = `<span>Ревизий пока не было. Каждый четверг в ${"9:00"} дашборд открывает её сам и пишет в Telegram.</span>${staff ? `<button class="new-order-btn" id="revStartBtn">📋 Начать ревизию сейчас</button>` : ""}`;
+      host.innerHTML = "";
+      wireRevHead(); return;
+    }
+    const counts = revCountRows.filter(c => c.rev === last.id), byKey = Object.fromEntries(counts.map(c => [c.key, c]));
+    const done = rows.filter(r => byKey[normCode(r.key)]).length;
+    const mism = counts.filter(c => c.diff);
+    if(rev){
+      head.innerHTML = `<span><b>Ревизия №${rev.id}</b> · начата ${esc(rev.started)} · посчитано <b id="revDone">${done}</b> из ${rows.length}${mism.length ? ` · расхождений <b>${mism.length}</b>` : ""}</span>
+        <span class="rev-progress"><span style="width:${rows.length ? Math.round(done / rows.length * 100) : 0}%"></span></span>
+        ${staff ? `<button class="new-order-btn" id="revFinishBtn">✅ Завершить ревизию</button>` : ""}${isAdmin() ? `<button class="adj-btn" id="revCancelBtn">Отменить</button>` : ""}`;
+    } else {
+      head.innerHTML = `<span><b>Ревизия №${last.id}</b> завершена ${esc(last.finished)} (${esc(last.finishedBy)}) · посчитано ${last.counted}${rows.length - done > 0 ? ` (не посчитано ${rows.length - done})` : ""} · <b>${mism.length ? "расхождений " + mism.length : "всё сошлось ✓"}</b></span>
+        ${staff ? `<button class="adj-btn" id="revStartBtn">📋 Начать новую</button>` : ""}`;
+    }
+    wireRevHead();
+    const term = (document.getElementById("revSearch").value || "").trim().toLowerCase();
+    let list = rev ? rows : rows.filter(r => byKey[normCode(r.key)]);
+    if(revFilter === "todo") list = list.filter(r => !byKey[normCode(r.key)]);
+    if(revFilter === "diff") list = list.filter(r => byKey[normCode(r.key)] && byKey[normCode(r.key)].diff);
+    if(term) list = list.filter(r => r.code.toLowerCase().includes(term) || r.name.toLowerCase().includes(term));
+    if(!rev) list = list.slice().sort((a, b) => Math.abs(byKey[normCode(b.key)].diff) - Math.abs(byKey[normCode(a.key)].diff));
+    document.getElementById("revRowCount").textContent = `${list.length} из ${rev ? rows.length : counts.length}`;
+    if(!list.length){ host.innerHTML = `<div class="state-box"><div class="big">${revFilter === "todo" ? "Всё посчитано 👍" : revFilter === "diff" ? "Расхождений нет ✓" : "Ничего не найдено"}</div></div>`; return; }
+    const pairs = revisionPairs(counts);
+    const adjDone = key => adjRows.some(a => a.codeKey === key && a.comment.includes(`Ревизия №${last.id}`) && a.status !== "Отменена");
+    let html = `<table><thead><tr><th>Код</th><th>Наименование</th><th class="num">Должно быть</th><th class="num">Факт</th><th class="num">Разница</th>${rev ? "" : "<th>Возможная причина</th>"}</tr></thead><tbody>`;
+    let lastGroup = "";
+    list.forEach(r => {
+      const k = normCode(r.key), c = byKey[k], g = stockGroupOf(r);
+      if(rev && g !== lastGroup){ lastGroup = g; html += `<tr class="group-row"><td colspan="5">${esc(STOCK_GROUP_TITLE[g])}</td></tr>`; }
+      const expected = rev ? shelfOf(r.key) : c.expected;
+      const diff = c ? c.diff : null;
+      const diffCls = diff == null ? "" : diff < 0 ? "minus" : diff > 0 ? "plus" : "zero";
+      const factCell = rev && staff
+        ? `<input class="rev-input${c ? " saved" : ""}" inputmode="decimal" data-revcode="${esc(r.key)}" value="${c ? fmtNum(c.fact).replace(/\s/g, "") : ""}" placeholder="—">`
+        : (c ? fmtNum(c.fact) : "—");
+      let reason = "";
+      if(!rev && c && c.diff){
+        const acts = !isAdmin() ? "" : adjDone(k) ? `<span class="adj-status">корректировка внесена ✓</span>`
+          : pairs[k] ? `<button class="adj-btn" data-revadj="regrade" data-code="${esc(r.key)}" data-code2="${esc(pairs[k].code)}" data-qty="${-c.diff}">⚖ Пересорт ${esc(r.code || r.name)} → ${esc(pairs[k].code)} × ${-c.diff}</button>
+                       <button class="adj-btn" data-revadj="shortage" data-code="${esc(r.key)}" data-qty="${-c.diff}">⚖ Недостача × ${-c.diff}</button>`
+          : `<button class="adj-btn" data-revadj="${c.diff < 0 ? "shortage" : "surplus"}" data-code="${esc(r.key)}" data-qty="${Math.abs(c.diff)}">⚖ ${c.diff < 0 ? "Недостача" : "Излишек"} × ${Math.abs(c.diff)}</button>`;
+        reason = `<td><div class="rev-reason">${(c.reason || "").split(" • ").filter(Boolean).map(x => "• " + esc(x)).join("<br>")}</div>${acts ? `<div class="rev-actions">${acts}</div>` : ""}</td>`;
+      } else if(!rev) reason = `<td><span class="adj-status">сошлось</span></td>`;
+      html += `<tr data-revrow="${esc(k)}"><td class="code">${esc(r.code) || "—"}</td><td class="name">${esc(r.name)}${c && rev ? `<div class="req-meta">${esc(c.by)} · ${esc(c.at)}</div>` : ""}</td>
+        <td class="num">${fmtNum(expected)}</td><td class="num">${factCell}</td>
+        <td class="num"><span class="rev-diff ${diffCls}">${diff == null ? "" : diff > 0 ? "+" + fmtNum(diff) : fmtNum(diff)}</span></td>${reason}</tr>`;
+    });
+    host.innerHTML = html + `</tbody></table>`;
+    host.querySelectorAll(".rev-input").forEach(inp => {
+      const save = async () => {
+        const v = inp.value.trim(), c = byKey[normCode(inp.dataset.revcode)];
+        if(v === (c ? String(c.fact) : "")) return;
+        inp.classList.remove("saved", "err");
+        try{
+          const res = await api("saveRevisionCount", {id: rev.id, code: inp.dataset.revcode, fact: v});
+          const k = normCode(inp.dataset.revcode);
+          revCountRows = revCountRows.filter(x => !(x.rev === rev.id && x.key === k));
+          if(!res.cleared) revCountRows.push({rev: rev.id, code: inp.dataset.revcode, key: k, fact: Number(v.replace(",", ".")), expected: res.expected, diff: res.diff, by: currentUser.name, at: "сейчас", reason: ""});
+          inp.classList.add(res.cleared ? "x" : "saved");
+          const cell = inp.closest("tr").querySelector(".rev-diff");
+          cell.className = "rev-diff " + (res.cleared ? "" : res.diff < 0 ? "minus" : res.diff > 0 ? "plus" : "zero");
+          cell.textContent = res.cleared ? "" : res.diff > 0 ? "+" + fmtNum(res.diff) : fmtNum(res.diff);
+          const doneNow = suggestRows().filter(r => revCountRows.some(x => x.rev === rev.id && x.key === normCode(r.key))).length;
+          const b = document.getElementById("revDone"); if(b) b.textContent = doneNow;
+          const bar = head.querySelector(".rev-progress > span"); if(bar) bar.style.width = Math.round(doneNow / suggestRows().length * 100) + "%";
+        }catch(err){ inp.classList.add("err"); inp.title = err.message; }
+      };
+      inp.addEventListener("change", save);
+      inp.addEventListener("keydown", e => {
+        if(e.key !== "Enter") return;
+        e.preventDefault(); save();
+        const all = [...host.querySelectorAll(".rev-input")], i = all.indexOf(inp);
+        if(all[i + 1]) all[i + 1].focus();
+      });
+    });
+    host.querySelectorAll("[data-revadj]").forEach(b => b.addEventListener("click", async () => {
+      const t = b.dataset.revadj, q = b.dataset.qty;
+      const what = t === "regrade" ? `пересорт ${b.dataset.code} → ${b.dataset.code2} × ${q}` : `${t === "shortage" ? "недостачу" : "излишек"} ${b.dataset.code} × ${q}`;
+      if(!confirm(`Внести корректировку: ${what}?`)) return;
+      b.disabled = true; b.textContent = "…";
+      try{ await api("addAdjustment", {type: t, code: b.dataset.code, code2: b.dataset.code2 || "", qty: q, comment: `Ревизия №${last.id}`}); await syncAll(true); }
+      catch(err){ alert("Не получилось: " + err.message); b.disabled = false; }
+    }));
+  }
+  function wireRevHead(){
+    const st = document.getElementById("revStartBtn"), fin = document.getElementById("revFinishBtn"), can = document.getElementById("revCancelBtn");
+    if(st) st.addEventListener("click", async () => {
+      st.disabled = true;
+      try{ await api("startRevision", {}); await syncAll(true); } catch(err){ alert("Не получилось: " + err.message); st.disabled = false; }
+    });
+    if(fin) fin.addEventListener("click", async () => {
+      const rev = openRev(); if(!rev) return;
+      const todo = suggestRows().filter(r => !revCountRows.some(x => x.rev === rev.id && x.key === normCode(r.key))).length;
+      if(!confirm(todo ? `Не посчитано позиций: ${todo}. Всё равно завершить ревизию №${rev.id}?` : `Завершить ревизию №${rev.id}?`)) return;
+      fin.disabled = true; fin.textContent = "Считаю итог…";
+      try{ await api("finishRevision", {id: rev.id}); revFilter = "diff"; document.querySelectorAll("[data-revfilter]").forEach(x => x.classList.toggle("active", x.dataset.revfilter === "diff")); await syncAll(true); }
+      catch(err){ alert("Не получилось: " + err.message); fin.disabled = false; fin.textContent = "✅ Завершить ревизию"; }
+    });
+    if(can) can.addEventListener("click", async () => {
+      const rev = openRev(); if(!rev || !confirm(`Отменить ревизию №${rev.id}? Подсчёты останутся на листе, итог не посчитается.`)) return;
+      try{ await api("cancelRevision", {id: rev.id}); await syncAll(true); } catch(err){ alert("Не получилось: " + err.message); }
+    });
+  }
+  document.getElementById("revSearch").addEventListener("input", renderRevision);
+  document.querySelectorAll("[data-revfilter]").forEach(b => b.addEventListener("click", () => {
+    document.querySelectorAll("[data-revfilter]").forEach(x => x.classList.remove("active"));
+    b.classList.add("active"); revFilter = b.dataset.revfilter; renderRevision();
+  }));
+
   // ---------- Корректировки ----------
   let adjFilter = "open";
   function adjGroups(){
@@ -2555,7 +2715,8 @@
     return {stock: rows(data.stock), pricelist: rows(data.pricelist), requests: rows(data.requests),
             receipts: rows(data.receipts), kits: rows(data.kits), shortage: rows(data.shortage),
             sales: rows(data.sales), salesPeriods: Array.isArray(data.salesPeriods) ? data.salesPeriods : [], catalog: rows(data.catalog),
-            people: Array.isArray(data.people) ? data.people : [], adjustments: rows(data.adjustments), hidden: rows(data.hidden), modems: rows(data.modems)};
+            people: Array.isArray(data.people) ? data.people : [], adjustments: rows(data.adjustments), hidden: rows(data.hidden), modems: rows(data.modems),
+            revisions: rows(data.revisions), revisionCounts: rows(data.revisionCounts)};
   }
   function forceRelogin(){
     try{ sessionStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(PAYLOAD_KEY); }catch(e){ /* ignore */ }
@@ -3326,6 +3487,7 @@
     renderRequestsStats(); renderRequests();
     renderReceiptsStats(); renderReceipts();
     renderAdjustments();
+    renderRevision();
     renderUnrealized();
     renderPricelistStats(); renderPricelist();
     renderAnalytics();
@@ -3360,6 +3522,10 @@
       receiptRows = buildReceipts(data.receipts);
       peopleList = data.people || [];
       adjRows = buildAdjustments(data.adjustments);
+      revisions = (data.revisions || []).slice(1).map(r => ({id: parseNum(r[0]), started: r[1], status: r[2], by: r[3], finished: r[4], finishedBy: r[5],
+        counted: parseNum(r[6]), mismatches: parseNum(r[7]), summary: r[8]})).filter(r => r.id);
+      revCountRows = (data.revisionCounts || []).slice(1).map(r => ({rev: parseNum(r[0]), code: (r[1] || "").trim(), key: normCode(r[1]), name: r[2],
+        expected: parseNum(r[3]), fact: parseNum(r[4]), diff: parseNum(r[5]), by: r[6], at: r[7], reason: r[8] || ""})).filter(r => r.rev && r.key);
       modemSheet = {};
       (data.modems || []).slice(1).forEach(r => { const m = normCode(r[0]); if(m) modemSheet[m] = normCode(r[1]); });
       hiddenKeys = new Set((data.hidden || []).slice(1).map(r => normCode((r[0] || "").trim() || (r[1] || "").trim())).filter(Boolean));
