@@ -979,6 +979,24 @@
   #themeBtn{min-width:38px; padding-left:10px; padding-right:10px;}
   :root[data-theme="light"] .brand-mark, :root[data-theme="light"] .login-logo{filter:saturate(1.1);}
   .theme-anim, .theme-anim *{transition:background-color .25s ease, border-color .25s ease, color .25s ease !important;}
+
+  /* загрузка остатков */
+  .modal-box-xl{max-width:760px;}
+  .drop-zone{display:flex; align-items:center; justify-content:center; gap:10px; border:1.5px dashed var(--line-hover); border-radius:10px;
+             padding:22px 16px; cursor:pointer; color:var(--ink-dim); font-size:13.5px; transition:border-color .15s ease, background-color .15s ease; margin-bottom:12px;}
+  .drop-zone:hover, .drop-zone.over{border-color:var(--accent); background:var(--accent-dim);}
+  .drop-zone b{color:var(--accent);}
+  .drop-icon{font-size:22px;}
+  .up-sum{display:flex; flex-wrap:wrap; gap:8px; margin:4px 0 12px;}
+  .up-chip{font-size:12.5px; padding:5px 10px; border-radius:7px; background:var(--panel-2); color:var(--ink-dim);}
+  .up-chip b{font-family:var(--mono); color:var(--ink);}
+  .up-chip.up{background:var(--accent-dim);} .up-chip.zero{background:var(--wait-bg);} .up-chip.new{background:var(--ok-bg);}
+  .up-list{max-height:280px; overflow:auto; border:1px solid var(--line); border-radius:8px; margin-bottom:12px;}
+  .up-list table{font-size:12px;} .up-list td, .up-list th{padding:5px 10px;}
+  .up-list .dn{color:var(--wait);} .up-list .upn{color:var(--ok);}
+  .up-note{font-size:12px; color:var(--ink-faint); margin:-4px 0 10px;}
+  .up-opts{display:flex; flex-wrap:wrap; align-items:center; gap:10px 20px; margin-bottom:12px; font-size:13px; color:var(--ink-dim);}
+  .up-opts input[type="date"]{background:var(--bg); border:1px solid var(--line); color:var(--ink); padding:6px 8px; border-radius:6px; font-family:var(--sans);}
 </style>
 </head>
 <body>
@@ -1066,6 +1084,7 @@
       <button class="filter-chip" data-stockfilter="low">Мало (&lt;10)</button>
       <div class="toolbar-spacer"></div>
       <span class="row-count" id="stockRowCount"></span>
+      <button class="new-order-btn" id="uploadStockBtn" hidden>⬆ Загрузить остатки из 1С</button>
     </div>
 
     <div class="table-wrap">
@@ -1272,6 +1291,32 @@
 </div>
 
 <!-- ============ RECEIPT MODAL ============ -->
+<div class="modal-overlay" id="stockUpOverlay">
+  <div class="modal-box modal-box-xl">
+    <div class="modal-header">
+      <span class="modal-title">Загрузка остатков из 1С</span>
+      <button class="modal-close" data-close>×</button>
+    </div>
+    <p class="modal-note">Отчёт «Остатки и доступность товаров» в PDF. Берём колонку «В наличии». Разметка листа «Остатки» (разделы, свои колонки) сохраняется, перед загрузкой делается резервная копия таблицы.</p>
+    <label class="drop-zone" id="stockDrop">
+      <input type="file" id="stockFile" accept="application/pdf,.pdf" hidden>
+      <span class="drop-icon">📄</span>
+      <span id="stockDropText"><b>Выберите PDF</b> или перетащите его сюда</span>
+    </label>
+    <div class="form-error" id="stockUpError"></div>
+    <div id="stockUpPreview"></div>
+    <div class="up-opts" id="stockUpOpts" hidden>
+      <label>Дата выгрузки <input type="date" id="stockUpDate"></label>
+      <label class="an-check"><input type="checkbox" id="stockUpAddNew" checked> добавить новые позиции в конец листа</label>
+    </div>
+    <div class="form-success" id="stockUpOk"></div>
+    <div class="modal-actions">
+      <button class="modal-btn cancel" data-close>Отмена</button>
+      <button class="modal-btn submit" id="stockUpSubmit" disabled>Загрузить</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="receiptModalOverlay">
   <div class="modal-box modal-box-wide">
     <div class="modal-header">
@@ -2481,6 +2526,190 @@
 
 
 
+
+  // ---------- Загрузка остатков из 1С (PDF разбираем в браузере) ----------
+  const PDFJS_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+  const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  let pdfjsPromise = null;
+  function loadPdfJs(){
+    if(window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    if(!pdfjsPromise) pdfjsPromise = new Promise((resolve, reject) => {
+      const sc = document.createElement("script"); sc.src = PDFJS_URL;
+      sc.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER; resolve(window.pdfjsLib); };
+      sc.onerror = () => { pdfjsPromise = null; reject(new Error("не загрузилась библиотека чтения PDF — проверь интернет")); };
+      document.head.appendChild(sc);
+    });
+    return pdfjsPromise;
+  }
+  async function pdfPages(file){
+    const lib = await loadPdfJs();
+    const doc = await lib.getDocument({data: new Uint8Array(await file.arrayBuffer())}).promise;
+    const pages = [];
+    for(let p = 1; p <= doc.numPages; p++){
+      const tc = await (await doc.getPage(p)).getTextContent();
+      pages.push(tc.items.map(i => ({s: i.str, x: i.transform[4], y: i.transform[5], w: i.width})));
+    }
+    return pages;
+  }
+  /*STOCKPARSER-START*/
+  // Разбор отчёта 1С «Остатки и доступность товаров» (PDF) по координатам текста.
+  // pages: [[{s, x, y, w}]] — элементы текста каждой страницы (y растёт вверх, как в PDF).
+  // Возвращает {items: [{code, name, unit, qty, available}], warnings: [], fixedCodes: [[было, стало]]}.
+  function parseStockReport(pages){
+    const LOOK = {"А":"A","В":"B","С":"C","Е":"E","Н":"H","К":"K","М":"M","О":"O","Р":"P","Т":"T","Х":"X","У":"Y"};
+    const fixCode = c => /[A-Za-z]/.test(c) ? c.replace(/[АВСЕНКМОРТХУ]/g, ch => LOOK[ch]) : c;
+    const isNum = s => /^-?\d{1,3}(?:[  ]\d{3})*(?:,\d+)?$|^-?\d+(?:,\d+)?$/.test(s.trim());
+    const num = s => Number(s.replace(/[  ]/g, "").replace(",", "."));
+    const items = [], warnings = [], fixedCodes = [];
+    let cols = null;                 // x-координаты колонок из заголовка
+    let stop = false;
+    pages.forEach((page, pi) => {
+      if(stop) return;
+      // строки: группируем по y (допуск 2)
+      const sorted = page.filter(t => t.s.trim()).slice().sort((a, b) => (b.y - a.y) || (a.x - b.x));
+      const lines = [];
+      sorted.forEach(t => {
+        const ln = lines.find(l => Math.abs(l.y - t.y) <= 2);
+        if(ln) ln.items.push(t); else lines.push({y: t.y, items: [t]});
+      });
+      lines.forEach(l => l.items.sort((a, b) => a.x - b.x));
+      lines.forEach(l => {
+        if(stop) return;
+        const text = l.items.map(t => t.s).join(" ");
+        const hdr = l.items.find(t => /^Номенклатура/i.test(t.s.trim()));
+        if(hdr){
+          const at = re => { const t = l.items.find(i => re.test(i.s.trim())); return t ? t.x : null; };
+          cols = {name: hdr.x, unit: at(/^Ед/i), have: at(/^В наличии/i), ship: at(/^Отгружа/i), res: at(/^В резерве/i),
+                  avail: at(/^Доступно/i), inc: at(/^Приход/i)};
+          return;
+        }
+        if(!cols) return;
+        if(/^Итого\b/i.test(text.trim())){ stop = true; return; }
+        const nums = l.items.filter(t => isNum(t.s) && t.x >= (cols.have || cols.unit) - 6);
+        const words = l.items.filter(t => !nums.includes(t));
+        const code = words.filter(t => t.x < cols.name - 2).map(t => t.s.trim()).join(" ").trim();
+        const name = words.filter(t => t.x >= cols.name - 2 && (cols.unit == null || t.x < cols.unit - 2)).map(t => t.s.trim()).join(" ").trim();
+        const unit = cols.unit == null ? "" : words.filter(t => t.x >= cols.unit - 2 && (cols.have == null || t.x < cols.have - 2)).map(t => t.s.trim()).join(" ").trim();
+        // число относим к колонке по правому краю
+        const colOf = t => {
+          const right = t.x + (t.w || 0);
+          const order = [["have", cols.have], ["ship", cols.ship], ["res", cols.res], ["avail", cols.avail], ["inc", cols.inc]].filter(c => c[1] != null);
+          let best = null;
+          order.forEach(([k, x], i) => { const next = order[i + 1] ? order[i + 1][1] : Infinity; if(right > x && right <= next + 3) best = k; });
+          return best;
+        };
+        const val = {};
+        nums.forEach(t => { const k = colOf(t); if(k && !(k in val)) val[k] = num(t.s); });
+        if(!nums.length){
+          // перенос длинного названия на следующую строку (или заголовок группы «Основной склад»)
+          const last = items[items.length - 1];
+          if(last && !code && name) last.name = (last.name + " " + name).replace(/\s+/g, " ").trim();
+          return;
+        }
+        if(!name && !code) return;
+        const fixed = fixCode(code);
+        if(fixed !== code) fixedCodes.push([code, fixed]);
+        const qty = "have" in val ? val.have : ("avail" in val ? val.avail : 0);
+        items.push({code: fixed, name, unit, qty, available: "avail" in val ? val.avail : qty});
+      });
+    });
+    if(!cols) warnings.push("Не нашёл заголовок таблицы («Номенклатура», «В наличии»). Это точно отчёт «Остатки и доступность товаров»?");
+    return {items, warnings, fixedCodes};
+  }
+  /*STOCKPARSER-END*/
+
+  const LOOK_F = {"А":"A","В":"B","С":"C","Е":"E","Н":"H","К":"K","М":"M","О":"O","Р":"P","Т":"T","Х":"X","У":"Y"};
+  const latinCode = c => normCode(c).replace(/[АВСЕНКМОРТХУ]/g, ch => LOOK_F[ch]);
+  const nameKeyF = s => latinCode(s).replace(/З/g, "3").replace(/O/g, "0").replace(/[^A-ZА-ЯЁ0-9]+/g, "");
+
+  /** Что изменится на листе «Остатки» (та же логика, что на сервере). */
+  function stockUploadDiff(items){
+    const byCode = {}, byName = {};
+    items.forEach((it, i) => { const r = Object.assign({i, used: false}, it); if(it.code) byCode[latinCode(it.code)] = r; if(it.name && !byName[nameKeyF(it.name)]) byName[nameKeyF(it.name)] = r; });
+    const changed = [], zeroed = []; let same = 0;
+    stockRows.forEach(row => {
+      if(row.isSection) return;
+      const rec = (row.code && byCode[latinCode(row.code)]) || (!row.code && row.name && byName[nameKeyF(row.name)]) || null;
+      const next = rec && !rec.used ? rec.qty : 0;
+      if(rec) rec.used = true;
+      if(row.qty === next) same++;
+      else (rec ? changed : zeroed).push({code: row.code, name: row.name, was: row.qty, now: next});
+    });
+    const fresh = Object.values(byCode).concat(Object.values(byName).filter(x => !x.code)).filter(x => !x.used).sort((a, b) => a.i - b.i);
+    return {changed, zeroed, fresh, same};
+  }
+
+  let stockUpItems = null;
+  const upEls = {overlay: document.getElementById("stockUpOverlay"), file: document.getElementById("stockFile"), drop: document.getElementById("stockDrop"),
+    dropText: document.getElementById("stockDropText"), err: document.getElementById("stockUpError"), prev: document.getElementById("stockUpPreview"),
+    opts: document.getElementById("stockUpOpts"), date: document.getElementById("stockUpDate"), addNew: document.getElementById("stockUpAddNew"),
+    ok: document.getElementById("stockUpOk"), submit: document.getElementById("stockUpSubmit")};
+  const isoToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+  function openStockUpload(){
+    stockUpItems = null; upEls.file.value = ""; upEls.prev.innerHTML = ""; upEls.opts.hidden = true;
+    upEls.submit.disabled = true; upEls.submit.textContent = "Загрузить";
+    upEls.dropText.innerHTML = "<b>Выберите PDF</b> или перетащите его сюда";
+    hideMsg(upEls.err); hideMsg(upEls.ok); upEls.date.value = isoToday();
+    openOverlay(upEls.overlay);
+    loadPdfJs().catch(() => {});   // заранее, пока выбирают файл
+  }
+  async function handleStockFile(file){
+    if(!file) return;
+    hideMsg(upEls.err); hideMsg(upEls.ok); upEls.prev.innerHTML = ""; upEls.opts.hidden = true; upEls.submit.disabled = true;
+    upEls.dropText.innerHTML = `⏳ Читаю <b>${esc(file.name)}</b>…`;
+    try{
+      if(!/pdf$/i.test(file.type) && !/\.pdf$/i.test(file.name)) throw new Error("нужен PDF-файл");
+      const res = parseStockReport(await pdfPages(file));
+      if(res.warnings.length) throw new Error(res.warnings.join(" "));
+      if(!res.items.length) throw new Error("в файле не нашёл ни одной позиции");
+      stockUpItems = res.items;
+      upEls.dropText.innerHTML = `📄 <b>${esc(file.name)}</b> · ${res.items.length} позиций · нажмите, чтобы выбрать другой`;
+      renderStockUpPreview(res);
+    }catch(err){
+      stockUpItems = null;
+      upEls.dropText.innerHTML = "<b>Выберите PDF</b> или перетащите его сюда";
+      showMsg(upEls.err, "Не получилось прочитать файл: " + err.message);
+    }
+  }
+  function renderStockUpPreview(res){
+    const d = stockUploadDiff(res.items);
+    const row = (x, cls) => `<tr><td class="code">${esc(x.code || "—")}</td><td class="name">${esc(x.name)}</td><td class="num">${fmtNum(x.was)}</td><td class="num ${cls}">${fmtNum(x.now)}</td></tr>`;
+    const list = d.changed.map(x => row(x, x.now > x.was ? "upn" : "dn")).concat(d.zeroed.map(x => row(x, "dn")))
+      .concat(d.fresh.map(x => `<tr><td class="code">${esc(x.code || "—")}</td><td class="name">${esc(x.name)} <span class="real-tag" style="background:var(--ok-bg);color:var(--ok)">новая</span></td><td class="num">—</td><td class="num upn">${fmtNum(x.qty)}</td></tr>`));
+    upEls.prev.innerHTML = `<div class="up-sum">
+        <span class="up-chip up">изменится: <b>${d.changed.length}</b></span>
+        <span class="up-chip zero">нет в 1С → 0: <b>${d.zeroed.length}</b></span>
+        <span class="up-chip new">новых: <b>${d.fresh.length}</b></span>
+        <span class="up-chip">без изменений: <b>${d.same}</b></span></div>
+      ${res.fixedCodes.length ? `<div class="up-note">В кодах ${res.fixedCodes.map(([a]) => esc(a)).join(", ")} русские буквы заменил на латинские (как в остальной таблице).</div>` : ""}
+      ${list.length ? `<div class="up-list"><table><thead><tr><th>Код</th><th>Наименование</th><th class="num">Было</th><th class="num">Станет</th></tr></thead><tbody>${list.join("")}</tbody></table></div>`
+                    : `<div class="up-note">Количество во всех позициях совпадает — обновится только дата выгрузки.</div>`}`;
+    upEls.opts.hidden = false;
+    upEls.addNew.parentElement.hidden = !d.fresh.length;
+    upEls.submit.disabled = false;
+  }
+  upEls.file.addEventListener("change", () => handleStockFile(upEls.file.files[0]));
+  ["dragenter", "dragover"].forEach(ev => upEls.drop.addEventListener(ev, e => { e.preventDefault(); upEls.drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(ev => upEls.drop.addEventListener(ev, e => { e.preventDefault(); upEls.drop.classList.remove("over"); }));
+  upEls.drop.addEventListener("drop", e => { const f = e.dataTransfer && e.dataTransfer.files[0]; if(f) handleStockFile(f); });
+  upEls.submit.addEventListener("click", async () => {
+    if(!stockUpItems) return;
+    const iso = upEls.date.value; const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(!m){ showMsg(upEls.err, "Укажите дату выгрузки"); return; }
+    upEls.submit.disabled = true; upEls.submit.textContent = "Загружаю…"; hideMsg(upEls.err);
+    try{
+      const r = await api("uploadStock", {date: `${m[3]}.${m[2]}.${m[1]}`, addNew: upEls.addNew.checked,
+        items: stockUpItems.map(it => ({code: it.code, name: it.name, unit: it.unit, qty: it.qty}))});
+      showMsg(upEls.ok, `✓ Остатки на ${r.date} загружены: изменено ${r.updated}, обнулено ${r.zeroed}, добавлено ${r.added}.`);
+      upEls.submit.textContent = "Готово";
+      stockUpItems = null;
+      syncAll(true);
+    }catch(err){
+      showMsg(upEls.err, err.message); upEls.submit.disabled = false; upEls.submit.textContent = "Загрузить";
+    }
+  });
+  document.getElementById("uploadStockBtn").addEventListener("click", openStockUpload);
+
   // ---------- Тема: светлая / тёмная ----------
   const themeBtn = document.getElementById("themeBtn");
   const sysLight = window.matchMedia ? window.matchMedia("(prefers-color-scheme: light)") : null;
@@ -3124,6 +3353,7 @@
     document.querySelectorAll("[data-warehouse-only]").forEach(el => { el.hidden = !seesAll(); });
     document.querySelectorAll("[data-admin-only]").forEach(el => { el.hidden = !seesAnalytics(); });
     document.getElementById("newReceiptBtn").hidden = !wh;
+    document.getElementById("uploadStockBtn").hidden = !isAdmin();
     syncAll(false);
     refreshTgStatus();
     if(!refreshTimer) refreshTimer = setInterval(()=>syncAll(false), 60*1000);
