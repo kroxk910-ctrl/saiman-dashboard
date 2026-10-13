@@ -1391,6 +1391,7 @@
 
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwYuJJBxBa6Dh90eUVmXUjyrBQdnrHmZ9whWYiJ9ZduRgOp03511GOwHgB4KFo9zIOL/exec";
   const SESSION_KEY = "qmt_dashboard_user_v2";
+  const PAYLOAD_KEY = "qmt_dashboard_payload_v1";
 
   const ST_NEW = "Новая", ST_PREP = "В подготовке", ST_READY = "Готова к отгрузке",
         ST_SHIPPED = "Отгружена", ST_CANCELLED = "Отменена";
@@ -1950,17 +1951,24 @@
   }
 
   // ---------- Server calls ----------
+  // Свежие данные, пришедшие вместе с ответом (вход, любое действие) — следующему syncAll не нужен отдельный запрос
+  let freshPayload = null;
+  const READ_ACTIONS = ["login", "data", "telegramStatus"];
   async function api(action, payload){
+    const body = Object.assign({action, pin: currentUser ? currentUser.pin : ""}, payload);
+    if(!READ_ACTIONS.includes(action)) body.withData = true;
     const res = await fetch(APPS_SCRIPT_URL, {
       method: "POST",
       headers: {"Content-Type": "text/plain;charset=utf-8"},
-      body: JSON.stringify(Object.assign({action, pin: currentUser ? currentUser.pin : ""}, payload))
+      body: JSON.stringify(body)
     });
     const text = await res.text();
     let data;
     try{ data = JSON.parse(text); }
     catch{ throw new Error("Сервер вернул непонятный ответ: " + text.slice(0,120)); }
     if(!data.ok){ const e = new Error(data.error || "Неизвестная ошибка"); e.badPin = !!data.badPin; throw e; }
+    if(action === "login" && Array.isArray(data.stock)) freshPayload = {at: Date.now(), data};
+    else if(data.payload && Array.isArray(data.payload.stock)) freshPayload = {at: Date.now(), data: data.payload};
     return data;
   }
 
@@ -2229,19 +2237,22 @@
   /** Данные для дашборда одним запросом к Apps Script (вместо чтения таблицы по открытой ссылке). */
   async function loadData(){
     let data;
-    try{ data = await api("data", {}); }
+    if(freshPayload && Date.now() - freshPayload.at < 15000){ data = freshPayload.data; freshPayload = null; }
+    else try{ data = await api("data", {}); }
     catch(err){
       if(err.badPin){ forceRelogin(); throw new Error("PIN изменился — войдите заново"); }
       if(/Неизвестное действие/.test(err.message)) throw new Error("Apps Script не обновлён: разверни новую версию скрипта");
       throw err;
     }
+    // последний ответ — в sessionStorage этой вкладки: после перезагрузки страница покажется сразу, а свежие данные догрузятся
+    try{ sessionStorage.setItem(PAYLOAD_KEY, JSON.stringify(data)); }catch(e){ /* большой ответ или приватный режим — без кэша */ }
     const rows = v => (Array.isArray(v) ? v : []).map(r => r.map(c => String(c ?? "")));
     return {stock: rows(data.stock), pricelist: rows(data.pricelist), requests: rows(data.requests),
             receipts: rows(data.receipts), kits: rows(data.kits), shortage: rows(data.shortage),
             sales: rows(data.sales), salesPeriods: Array.isArray(data.salesPeriods) ? data.salesPeriods : [], catalog: rows(data.catalog)};
   }
   function forceRelogin(){
-    try{ sessionStorage.removeItem(SESSION_KEY); }catch(e){ /* ignore */ }
+    try{ sessionStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(PAYLOAD_KEY); }catch(e){ /* ignore */ }
     setTimeout(() => location.reload(), 1500);
   }
 
@@ -3585,14 +3596,20 @@
     document.querySelectorAll("[data-admin-only]").forEach(el => { el.hidden = !seesAnalytics(); });
     document.getElementById("newReceiptBtn").hidden = !wh;
     document.getElementById("uploadStockBtn").hidden = !isAdmin();
-    syncAll(false);
+    let cachedData = null;
+    if(!freshPayload){ try{ cachedData = JSON.parse(sessionStorage.getItem(PAYLOAD_KEY) || "null"); }catch(e){ cachedData = null; } }
+    if(cachedData && Array.isArray(cachedData.stock)){
+      freshPayload = {at: Date.now(), data: cachedData};
+      syncAll(false);           // мгновенно — из сохранённого ответа
+      syncAll(false);           // встанет в очередь и подтянет свежие данные с сервера
+    } else syncAll(false);
     refreshTgStatus();
     if(!refreshTimer) refreshTimer = setInterval(()=>syncAll(false), 60*1000);
   }
 
   document.getElementById("logoutBtnM").addEventListener("click", ()=> document.getElementById("logoutBtn").click());
   document.getElementById("logoutBtn").addEventListener("click", ()=>{
-    try{ sessionStorage.removeItem(SESSION_KEY); }catch(e){ /* ignore */ }
+    try{ sessionStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(PAYLOAD_KEY); }catch(e){ /* ignore */ }
     location.reload();
   });
 
