@@ -274,12 +274,12 @@
     margin-bottom:6px;
   }
   .form-field .required{color:var(--accent);}
-  .form-field input, .form-field textarea{
+  .form-field input, .form-field textarea, .form-field select{
     width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--ink);
     font-family:var(--sans); font-size:13px; padding:9px 12px; border-radius:7px;
     outline:none; transition:border-color .15s ease; resize:vertical;
   }
-  .form-field input:focus, .form-field textarea:focus{border-color:var(--accent);}
+  .form-field input:focus, .form-field textarea:focus, .form-field select:focus{border-color:var(--accent);}
   .form-field input[readonly]{
     color:var(--ink-dim); cursor:default; background:var(--panel);
   }
@@ -1259,12 +1259,14 @@
       <div class="radio-group">
         <label class="radio-option"><input type="radio" name="source" value="stock" checked><span>Со склада</span></label>
         <label class="radio-option"><input type="radio" name="source" value="factory"><span>Напрямую с завода</span></label>
+        <label class="radio-option" id="srcIssuedOpt" hidden><input type="radio" name="source" value="issued"><span>Уже выдано без заявки</span></label>
       </div>
     </div>
 
     <div class="form-field">
-      <label>Менеджер</label>
+      <label id="fldManagerLabel">Менеджер</label>
       <input type="text" id="fldManager" readonly>
+      <select id="fldManagerSel" hidden></select>
     </div>
 
     <div class="form-field">
@@ -1273,7 +1275,7 @@
       <button class="add-item-btn" id="addRequestItemBtn">+ Добавить позицию</button>
     </div>
 
-    <div class="form-field">
+    <div class="form-field" id="realizedField">
       <label>Реализация в 1С проведена? <span class="required">*</span></label>
       <div class="radio-group">
         <label class="radio-option"><input type="radio" name="realized" value="yes"><span>Да, проведена</span></label>
@@ -1502,6 +1504,7 @@
   let requestRows = [];    // одна строка таблицы = одна позиция
   let requests = [];       // сгруппировано по № заявки
   let receiptRows = [];
+  let peopleList = [];     // имена сотрудников (без PIN) — кому склад выдал без заявки
   let pricelistRows = [];
   let availMap = {};       // CODE -> {morning, reserved, shipped, received, available}
 
@@ -1966,7 +1969,7 @@
     let data;
     try{ data = JSON.parse(text); }
     catch{ throw new Error("Сервер вернул непонятный ответ: " + text.slice(0,120)); }
-    if(!data.ok){ const e = new Error(data.error || "Неизвестная ошибка"); e.badPin = !!data.badPin; throw e; }
+    if(!data.ok){ const e = new Error(data.error || "Неизвестная ошибка"); e.badPin = !!data.badPin; e.dupIssued = data.dupIssued || 0; throw e; }
     if(action === "login" && Array.isArray(data.stock)) freshPayload = {at: Date.now(), data};
     else if(data.payload && Array.isArray(data.payload.stock)) freshPayload = {at: Date.now(), data: data.payload};
     return data;
@@ -2249,7 +2252,8 @@
     const rows = v => (Array.isArray(v) ? v : []).map(r => r.map(c => String(c ?? "")));
     return {stock: rows(data.stock), pricelist: rows(data.pricelist), requests: rows(data.requests),
             receipts: rows(data.receipts), kits: rows(data.kits), shortage: rows(data.shortage),
-            sales: rows(data.sales), salesPeriods: Array.isArray(data.salesPeriods) ? data.salesPeriods : [], catalog: rows(data.catalog)};
+            sales: rows(data.sales), salesPeriods: Array.isArray(data.salesPeriods) ? data.salesPeriods : [], catalog: rows(data.catalog),
+            people: Array.isArray(data.people) ? data.people : []};
   }
   function forceRelogin(){
     try{ sessionStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(PAYLOAD_KEY); }catch(e){ /* ignore */ }
@@ -3037,6 +3041,7 @@
       requests = groupRequests(requestRows);
       pendingEvents = detectRequestEvents(requests);
       receiptRows = buildReceipts(data.receipts);
+      peopleList = data.people || [];
       kitIndex = buildKits(data.kits);
       shortageRows = buildShortage(data.shortage);
       salesRows = buildSales(data.sales); salesPeriods = data.salesPeriods;
@@ -3236,7 +3241,7 @@
         if(absent.length) return `Для комплекта не хватает позиций в остатках: ${absent.join(", ")}`;
         const short = Object.entries(need).filter(([k,q]) => q > availOf(k))
           .map(([k,q]) => `${stockIndex[k].label} — доступно ${fmtNum(availOf(k))}, нужно ${fmtNum(q)}`);
-        if(short.length){
+        if(short.length && !(mode === "request" && isIssued())){   // выдачу (товар уже у менеджера) записываем всегда
           // спрос, который склад не закрыл, — в лист «Дефицит» (для рекомендации к заказу)
           const cm = document.getElementById("fldRequestComment");
           api("reportShortage", {items: items.map(it => ({code: it.code, qty: it.qty})), comment: cm ? cm.value.trim() : ""}).catch(() => {});
@@ -3284,25 +3289,37 @@
   }
 
   // ---------- New request ----------
-  const isDirectRequest = () => (document.querySelector('input[name="source"]:checked') || {}).value === "factory";
+  const sourceOf = () => (document.querySelector('input[name="source"]:checked') || {}).value || "stock";
+  const isDirectRequest = () => sourceOf() === "factory";
+  const isIssued = () => sourceOf() === "issued";
   const requestEditor = createItemsEditor(document.getElementById("requestItemsList"), document.getElementById("addRequestItemBtn"), "request", isDirectRequest);
   function applyRequestSource(){
-    const direct = isDirectRequest();
-    document.getElementById("requestModalTitle").textContent = direct ? "Прямая отгрузка с завода" : "Новая заявка на склад";
+    const direct = isDirectRequest(), issued = isIssued();
+    document.getElementById("requestModalTitle").textContent = direct ? "Прямая отгрузка с завода" : issued ? "Выдано без заявки" : "Новая заявка на склад";
     document.getElementById("requestModalNote").textContent = direct
       ? "Товар едет с завода сразу клиенту, мимо склада. Остаток склада не меняется — фиксируем только реализацию."
+      : issued ? "Менеджер забрал товар, не оформив заявку. Запишем за ним как «Отгружена», без реализации — остаток сразу уменьшится, а ему придёт сообщение в Telegram: провести реализацию и прислать накладную."
       : "Склад подготовит товар и поставит статус «Готова к отгрузке». Заказать больше доступного остатка нельзя.";
-    document.getElementById("requestModalSubmit").textContent = direct ? "Зафиксировать" : "Отправить на склад";
+    document.getElementById("requestModalSubmit").textContent = submitLabelOf();
+    document.getElementById("fldManager").hidden = issued;
+    document.getElementById("fldManagerSel").hidden = !issued;
+    document.getElementById("fldManagerLabel").textContent = issued ? "Кому выдали" : "Менеджер";
+    document.getElementById("realizedField").hidden = issued;
     requestEditor.refresh();
   }
+  const submitLabelOf = () => isDirectRequest() ? "Зафиксировать" : isIssued() ? "Записать выдачу" : "Отправить на склад";
   document.querySelectorAll('input[name="source"]').forEach(i => i.addEventListener("change", ()=>{
     hideMsg(document.getElementById("requestFormError")); applyRequestSource();
   }));
   const requestForm = makeFormFlow({
     overlay:"requestModalOverlay", error:"requestFormError", success:"requestFormSuccess", submit:"requestModalSubmit",
-    submitLabel: () => isDirectRequest() ? "Зафиксировать" : "Отправить на склад",
+    submitLabel: () => submitLabelOf(),
     onOpen(){
       document.getElementById("fldManager").value = currentUser ? currentUser.name : "";
+      document.getElementById("srcIssuedOpt").hidden = !isWarehouse();
+      const others = peopleList.filter(p => p.name !== (currentUser && currentUser.name));
+      document.getElementById("fldManagerSel").innerHTML = `<option value="">— выберите —</option>` +
+        others.map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join("");
       document.getElementById("fldRequestComment").value = "";
       document.querySelectorAll('input[name="realized"]').forEach(i => { i.checked = false; });
       document.querySelector('input[name="source"][value="stock"]').checked = true;
@@ -3313,18 +3330,31 @@
     validate(){
       const problem = requestEditor.validate();
       if(problem) return problem;
+      if(isIssued()){ return document.getElementById("fldManagerSel").value ? null : "Выберите, кому выдали товар"; }
       if(!document.querySelector('input[name="realized"]:checked')) return "Укажите, проведена ли реализация в 1С";
       return null;
     },
-    send(){
-      return api("createRequest", {
+    async send(){
+      const body = {
         items: requestEditor.collect(),
         comment: document.getElementById("fldRequestComment").value.trim(),
-        realized: document.querySelector('input[name="realized"]:checked').value === "yes",
+        realized: isIssued() ? false : document.querySelector('input[name="realized"]:checked').value === "yes",
         direct: isDirectRequest()
-      });
+      };
+      if(isIssued()){ body.issued = true; body.forManager = document.getElementById("fldManagerSel").value; }
+      try{ return await api("createRequest", body); }
+      catch(err){
+        // это уже выдали без заявки — переспросить, не другая ли это отгрузка
+        if(err.dupIssued && confirm(err.message + "\n\nЕсли это ДРУГАЯ отгрузка — нажмите «ОК», заявка создастся. Иначе «Отмена».")) return api("createRequest", Object.assign(body, {force: true}));
+        if(err.dupIssued) throw new Error("Заявку не создавал: товар уже записан за вами как выдача №" + err.dupIssued + ".");
+        throw err;
+      }
     },
-    successText(res){ return isDirectRequest() ? `Прямая отгрузка №${res.id} зафиксирована. Обновляю данные…` : `Заявка №${res.id} отправлена на склад. Обновляю данные…`; }
+    successText(res){
+      if(isDirectRequest()) return `Прямая отгрузка №${res.id} зафиксирована. Обновляю данные…`;
+      if(isIssued()) return `Выдача записана: №${res.id}. Менеджеру ушло сообщение в Telegram.${res.warn ? " ⚠ " + res.warn : ""} Обновляю данные…`;
+      return `Заявка №${res.id} отправлена на склад. Обновляю данные…`;
+    }
   });
   document.getElementById("newRequestBtn").addEventListener("click", ()=> requestForm.open());
   document.querySelectorAll('input[name="realized"]').forEach(i => i.addEventListener("change", ()=> hideMsg(document.getElementById("requestFormError"))));
