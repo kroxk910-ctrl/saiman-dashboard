@@ -753,7 +753,7 @@
   tr.old-row td{opacity:.5;}
   .item-modem{font-size:12px; color:var(--ink-dim); margin-top:4px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
   .item-modem b{font-family:var(--mono); color:var(--ink);}
-  .item-modem .ok{color:var(--ok);}
+  .item-modem .ok{color:var(--ok);} .item-modem .bad{color:var(--danger);}
   .modem-set{display:flex; align-items:center; gap:6px; margin-top:10px; flex-wrap:wrap; font-size:12.5px; color:var(--ink-dim);}
   .modem-set select{font:inherit; padding:4px 8px; border-radius:6px; border:1px solid var(--line); background:var(--panel-2); color:var(--ink);}
   .hidden-panel{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 12px; font-size:13px; color:var(--ink-dim);}
@@ -1508,7 +1508,9 @@
     return Number.isNaN(n) ? 0 : n;
   }
 
-  function normCode(v){ return String(v ?? "").trim().toUpperCase(); }
+  // как на сервере: в кодах с латиницей похожие русские буквы = латинские («LР» из 1С = «LP»)
+  const LOOKALIKE = {"А":"A","В":"B","С":"C","Е":"E","Н":"H","К":"K","М":"M","О":"O","Р":"P","Т":"T","Х":"X","У":"Y"};
+  function normCode(v){ const s = String(v ?? "").trim().toUpperCase(); return /[A-Z]/.test(s) ? s.replace(/[АВСЕНКМОРТХУ]/g, ch => LOOKALIKE[ch]) : s; }
 
   // "дд.мм.гггг" (или "гггг-мм-дд") → "гггг-мм-дд"; "" если не дата
   function dateKey(s){
@@ -3448,6 +3450,7 @@
   function createItemsEditor(listEl, addBtn, mode, isDirect){
     const direct = () => !!(isDirect && isDirect());
     // подсказка складу: какой модем идёт к счётчику (в приходе — кнопка добавить его строкой)
+    const metersWord = n => (n % 10 === 1 && n % 100 !== 11) ? "счётчик" : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) ? "счётчика" : "счётчиков";
     function modemHint(block, code){
       const box = block.querySelector(".item-modem");
       if(!box) return;
@@ -3455,15 +3458,34 @@
       if(mode === "request" || !code || !isMeterCode(code)) return;
       const m = modemFor(code);
       if(!m){ box.hidden = false; box.innerHTML = `📶 Модем к этому счётчику не указан${isAdmin() ? " — укажите в карточке счётчика в остатках" : " — уточните у Александра"}`; return; }
-      const ms = stockIndex[m], qty = block.querySelector(".item-qty").value.replace(/\s/g, "");
-      const inList = collect().some(it => normCode(it.code) === m);
+      const ms = stockIndex[m];
+      // сколько модемов нужно: по всем счётчикам в списке, к которым идёт этот же модем
+      const blocks = [...listEl.querySelectorAll(".item-block")];
+      const qOf = b => { const q = b.querySelector(".item-qty").value.replace(/\s/g, ""); return /^\d+$/.test(q) ? Number(q) : 0; };
+      const codeOf = b => normCode(b.querySelector(".item-code").value);
+      const need = blocks.filter(b => isMeterCode(codeOf(b)) && modemFor(codeOf(b)) === m).reduce((n, b) => n + qOf(b), 0);
+      const modemBlocks = blocks.filter(b => codeOf(b) === m);
+      const have = modemBlocks.reduce((n, b) => n + qOf(b), 0);
+      const meters = blocks.filter(b => isMeterCode(codeOf(b)) && modemFor(codeOf(b)) === m).length;
+      const label = esc(ms ? ms.code || m : m);
+      let tail = "";
+      if(mode === "receipt"){
+        if(!modemBlocks.length) tail = ` <button type="button" class="adj-btn modem-add">+ добавить ${label}${need ? " × " + need : ""}</button>`;
+        else if(need && have < need) tail = ` <span class="bad">— в списке ${have} из ${need}${meters > 1 ? " (на " + meters + " " + metersWord(meters) + ")" : ""}</span> <button type="button" class="adj-btn modem-fix">довести до ${need}</button>`;
+        else tail = ` <span class="ok">— в списке ${have}${need && meters > 1 ? " (на " + meters + " " + metersWord(meters) + ")" : ""} ✓</span>`;
+      }
       box.hidden = false;
-      box.innerHTML = `📶 Модем к нему: <b>${esc(ms ? ms.code || m : m)}</b>${ms ? " · " + esc(ms.name) : ""}` +
-        (inList ? ` <span class="ok">— уже в списке ✓</span>` : mode === "receipt" ? ` <button type="button" class="adj-btn modem-add">+ добавить ${esc(m)}${/^\d+$/.test(qty) ? " × " + qty : ""}</button>` : "");
+      box.innerHTML = `📶 Модем к нему: <b>${label}</b>${ms ? " · " + esc(ms.name) : ""}${tail}`;
       const btn = box.querySelector(".modem-add");
       if(btn) btn.addEventListener("click", () => {
         const nb = add(); nb.querySelector(".item-code").value = m;
-        if(/^\d+$/.test(qty)) nb.querySelector(".item-qty").value = qty;
+        if(need) nb.querySelector(".item-qty").value = need;
+        refresh();
+      });
+      const fix = box.querySelector(".modem-fix");
+      if(fix) fix.addEventListener("click", () => {
+        const first = modemBlocks[0], others = have - qOf(first);
+        first.querySelector(".item-qty").value = Math.max(0, need - others);
         refresh();
       });
     }
