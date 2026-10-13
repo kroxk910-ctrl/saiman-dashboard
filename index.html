@@ -522,6 +522,8 @@
     letter-spacing:0.06em; padding:7px 12px;
   }
   tr.zero-row td.num{color:var(--ink-faint);}
+  tr.group-row td{background:var(--panel-2); color:var(--ink-dim); font-size:11.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; padding:9px 14px;}
+  tr.group-row .group-count{color:var(--ink-faint); font-weight:500; margin-left:6px; letter-spacing:0;}
   tr.low-row td.num.qty{color:var(--wait);}
 
   .expand-col{width:28px;}
@@ -1568,7 +1570,9 @@
     host.querySelectorAll("th[data-sortkey]").forEach(th=>{
       th.addEventListener("click", ()=>{
         const key = th.getAttribute("data-sortkey");
-        if(sortState.key === key) sortState.dir *= -1;
+        // третий клик по той же колонке — обратно к порядку по умолчанию (если он есть)
+        if(sortState.key === key && sortState.dir === -1 && sortState.resettable){ sortState.key = null; sortState.dir = 1; }
+        else if(sortState.key === key) sortState.dir *= -1;
         else { sortState.key = key; sortState.dir = 1; }
         rerender();
       });
@@ -1594,7 +1598,32 @@
   let pricelistRows = [];
   let availMap = {};       // CODE -> {morning, reserved, shipped, received, available}
 
-  let stockSort = {key:null, dir:1};
+  let stockSort = {key:null, dir:1, resettable:true};   // key=null — группами: электросчётчики сверху, модемы внизу
+
+  // ---------- Порядок остатков по умолчанию: группа товара, внутри — самые продаваемые ----------
+  // Проверяем по порядку (антенна «4GGPRS» — раньше модемов), показываем в порядке STOCK_GROUP_ORDER
+  const STOCK_GROUP_RULES = [
+    ["water", /воды|водомер|водосч/i],
+    ["meter", /орман|дала|отан|сч[её]тчик\s*эл|электросч|СО-Э|СА4|САЗ|CAP3|CA4|СЭТ/i],
+    ["ct", /трансформатор/i],
+    ["cabinet", /ШУЭ|шкаф/i],
+    ["antenna", /антенн/i],
+    ["modem", /модем|модул|GPRS|SaiCom/i],
+  ];
+  const STOCK_GROUP_ORDER = ["meter", "water", "ct", "cabinet", "antenna", "other", "modem"];
+  const STOCK_GROUP_TITLE = {meter: "Электросчётчики", water: "Счётчики воды", ct: "Трансформаторы тока", cabinet: "Шкафы учёта",
+                             antenna: "Антенны", other: "Прочее", modem: "Модемы"};
+  function stockGroupOf(r){
+    const text = (r.name || "") + " " + (r.code || "");
+    const hit = STOCK_GROUP_RULES.find(([, re]) => re.test(text));
+    return hit ? hit[0] : "other";
+  }
+  /** Продано/отгружено за 90 дней по коду (продажи 1С + отгрузки дашборда). */
+  function popularity(){
+    const from = keyPlusDays(todayKey(), -89), out = {};
+    try{ demandEvents().forEach(x => { if(x.key >= from) out[x.code] = (out[x.code] || 0) + x.qty; }); }catch(e){ /* аналитика ещё не готова */ }
+    return out;
+  }
   let requestSort = {key:"id", dir:-1};
   let pricelistSort = {key:null, dir:1};
   let stockFilter = "all";
@@ -1818,6 +1847,7 @@
     const term = (document.getElementById("stockSearch").value||"").trim().toLowerCase();
     if(term) rows = rows.filter(r => r.code.toLowerCase().includes(term) || r.name.toLowerCase().includes(term));
 
+    let grouped = false;
     if(stockSort.key){
       rows = rows.slice().sort((a,b)=>{
         let x, y;
@@ -1825,6 +1855,11 @@
         else { x = (a[stockSort.key]||"").toLowerCase(); y = (b[stockSort.key]||"").toLowerCase(); }
         return x < y ? -stockSort.dir : x > y ? stockSort.dir : 0;
       });
+    } else {
+      // по умолчанию: группа (электросчётчики → … → модемы), внутри — популярные сверху, потом по остатку
+      const pop = popularity(), gi = r => STOCK_GROUP_ORDER.indexOf(stockGroupOf(r)), pk = r => pop[normCode(r.key)] || 0;
+      rows = rows.slice().sort((a, b) => (gi(a) - gi(b)) || (pk(b) - pk(a)) || (av(b) - av(a)) || a.name.localeCompare(b.name, "ru"));
+      grouped = true;
     }
 
     document.getElementById("stockRowCount").textContent = `${rows.length} из ${stockRows.filter(r=>!r.isSection && (stockFilter === "hidden" ? isHiddenRow(r) : !isHiddenRow(r))).length}`;
@@ -1844,7 +1879,15 @@
       <th data-sortkey="avail" class="num ${cls('avail')}">Доступно, шт <span class="arrow">${arrow('avail')}</span></th>
     </tr></thead><tbody>`;
 
+    let lastGroup = "";
     rows.forEach((r, idx) => {
+      if(grouped){
+        const g = stockGroupOf(r);
+        if(g !== lastGroup){
+          lastGroup = g;
+          html += `<tr class="group-row"><td colspan="4">${esc(STOCK_GROUP_TITLE[g])} <span class="group-count">${rows.filter(x => stockGroupOf(x) === g).length}</span></td></tr>`;
+        }
+      }
       const s = (r.key && availMap[normCode(r.key)]) || {morning:r.qty, reserved:0, shipped:0, received:0, available:r.qty};
       const a = Math.max(0, s.available);
       const rowClass = (isHiddenRow(r) ? "hidden-item " : "") + (a <= 0 ? "zero-row" : (a < 10 ? "low-row" : ""));
