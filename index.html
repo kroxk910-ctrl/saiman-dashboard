@@ -749,6 +749,13 @@
   .req-item .q{color:var(--ink-dim);}
   .req-meta{font-size:11px; color:var(--ink-faint); margin-top:4px; white-space:nowrap;}
   tr.old-row td{opacity:.5;}
+  .adj-note{font-size:12.5px; color:var(--ink-faint); margin:0 0 12px; line-height:1.5;}
+  .adj-delta{font-family:var(--mono); font-weight:600; white-space:nowrap;}
+  .adj-delta.minus{color:var(--danger);} .adj-delta.plus{color:var(--ok);}
+  .adj-actions{display:flex; gap:6px; flex-wrap:wrap;}
+  .adj-btn{font:inherit; font-size:12px; padding:4px 9px; border-radius:6px; border:1px solid var(--line); background:var(--panel-2); color:var(--ink); cursor:pointer;}
+  .adj-btn:hover{border-color:var(--accent);}
+  .adj-status{font-size:12px; color:var(--ink-dim);}
 
   .item-block{margin-bottom:8px;}
   .item-block .item-row{margin-bottom:4px;}
@@ -1063,6 +1070,7 @@
     <button class="tab-btn active" data-view="stock">Остатки <span class="count" id="stockCount">—</span></button>
     <button class="tab-btn" data-view="requests"><span id="requestsTabLabel">Заявки</span> <span class="count" id="requestsCount">—</span></button>
     <button class="tab-btn" data-view="receipts" data-warehouse-only hidden>Посадки <span class="count" id="receiptsCount">—</span></button>
+    <button class="tab-btn" data-view="adjustments" data-warehouse-only hidden>Корректировки <span class="count" id="adjCount">—</span></button>
     <button class="tab-btn" data-view="pricelist">Прайс-лист <span class="count" id="pricelistCount">—</span></button>
     <button class="tab-btn" data-view="analytics" data-admin-only hidden>Аналитика</button>
   </div>
@@ -1165,6 +1173,26 @@
         <div class="state-box"><div class="spinner"></div><div class="big">Загружаем посадки…</div></div>
       </div>
     </div>
+  </section>
+
+  <!-- ============ ADJUSTMENTS VIEW: недостача / излишек / пересорт ============ -->
+  <section class="view" id="view-adjustments">
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Действуют</div><div class="stat-value accent" id="adjStatOpen">—</div></div>
+      <div class="stat"><div class="stat-label">Недостача, шт</div><div class="stat-value" id="adjStatMinus">—</div></div>
+      <div class="stat"><div class="stat-label">Излишек, шт</div><div class="stat-value ok" id="adjStatPlus">—</div></div>
+      <div class="stat"><div class="stat-label">Всего записей</div><div class="stat-value" id="adjStatAll">—</div></div>
+    </div>
+    <p class="adj-note">Недостачи, излишки и пересорт, которых ещё нет в 1С. Действуют поверх каждой выгрузки 1С, пока их не отметят «проведена в 1С» — после этого снимаются со следующей выгрузкой.</p>
+    <div class="toolbar">
+      <div class="search-box"><input type="text" id="adjSearch" placeholder="Поиск по коду, комментарию…"></div>
+      <button class="filter-chip active" data-adjfilter="open">Действуют</button>
+      <button class="filter-chip" data-adjfilter="all">Все</button>
+      <div class="toolbar-spacer"></div>
+      <span class="row-count" id="adjRowCount"></span>
+      <button class="new-order-btn" id="newAdjBtn" hidden>+ Корректировка</button>
+    </div>
+    <div class="table-wrap"><div id="adjTableHost"><div class="state-box"><div class="spinner"></div><div class="big">Загружаем…</div></div></div></div>
   </section>
 
   <!-- ============ ANALYTICS VIEW (только админ) ============ -->
@@ -1354,6 +1382,49 @@
   </div>
 </div>
 
+<!-- ============ ADJUSTMENT MODAL ============ -->
+<div class="modal-overlay" id="adjModalOverlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Корректировка остатка</span>
+      <button class="modal-close" data-close>×</button>
+    </div>
+    <p class="modal-note" id="adjModalNote"></p>
+    <div class="form-field">
+      <label>Что случилось</label>
+      <div class="radio-group">
+        <label class="radio-option"><input type="radio" name="adjType" value="shortage" checked><span>Недостача</span></label>
+        <label class="radio-option"><input type="radio" name="adjType" value="surplus"><span>Излишек</span></label>
+        <label class="radio-option"><input type="radio" name="adjType" value="regrade"><span>Пересорт</span></label>
+      </div>
+    </div>
+    <div class="form-field">
+      <label id="adjCodeLabel">Код</label>
+      <input type="text" id="fldAdjCode" list="stockCodes" autocomplete="off" placeholder="Код">
+      <div class="item-hint" id="adjCodeHint"></div>
+    </div>
+    <div class="form-field" id="adjCode2Field" hidden>
+      <label>На самом деле лежит</label>
+      <input type="text" id="fldAdjCode2" list="stockCodes" autocomplete="off" placeholder="Код">
+      <div class="item-hint" id="adjCode2Hint"></div>
+    </div>
+    <div class="form-field">
+      <label>Количество, шт</label>
+      <input type="text" id="fldAdjQty" inputmode="numeric" placeholder="Кол-во">
+    </div>
+    <div class="form-field">
+      <label>Комментарий</label>
+      <textarea id="fldAdjComment" rows="2" placeholder="Например: инвентаризация 13.10, коробка вскрыта"></textarea>
+    </div>
+    <div class="form-error" id="adjFormError"></div>
+    <div class="form-success" id="adjFormSuccess"></div>
+    <div class="modal-actions">
+      <button class="modal-btn cancel" data-close>Отмена</button>
+      <button class="modal-btn submit" id="adjModalSubmit">Внести</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ TELEGRAM MODAL ============ -->
 <div class="modal-overlay" id="tgModalOverlay">
   <div class="modal-box">
@@ -1505,6 +1576,7 @@
   let requests = [];       // сгруппировано по № заявки
   let receiptRows = [];
   let peopleList = [];     // имена сотрудников (без PIN) — кому склад выдал без заявки
+  let adjRows = [];        // лист «Корректировки»
   let pricelistRows = [];
   let availMap = {};       // CODE -> {morning, reserved, shipped, received, available}
 
@@ -1616,6 +1688,28 @@
     return out;
   }
 
+  // ---------- Parse: ADJUSTMENTS (лист «Корректировки») ----------
+  // A=№, B=Дата, C=Тип, D=Код, E=Изменение, F=Пара, G=Комментарий, H=Кто, I=Статус, J=Проведена в 1С, K=Провёл, L=Создана
+  function buildAdjustments(rows){
+    const out = [];
+    for(let i=1; i<(rows || []).length; i++){
+      const r = rows[i];
+      const id = parseNum(r[0]), code = (r[3]||"").trim();
+      if(!id || !code) continue;
+      out.push({sheetRow: i + 1, id, date:(r[1]||"").trim(), type:(r[2]||"").trim(), code, codeKey: normCode(code), delta: parseNum(r[4]),
+                pair:(r[5]||"").trim(), comment:(r[6]||"").trim(), by:(r[7]||"").trim(), status:(r[8]||"").trim() || "Действует",
+                resolvedAt:(r[9]||"").trim(), resolvedBy:(r[10]||"").trim(), createdAt:(r[11]||"").trim()});
+    }
+    return out;
+  }
+  // как на сервере: действует, пока не проведена в 1С; после отметки — до первой выгрузки позже отметки
+  function adjCountsF(a, snap){
+    if(a.status === "Отменена") return false;
+    if(a.status !== "Проведена в 1С") return true;
+    const k = eventAtF(a.resolvedAt);
+    return !k || !snap || k >= snap;
+  }
+
   // ---------- Parse: PRICELIST ----------
   function buildPricelist(rows){
     const out = [];
@@ -1636,7 +1730,7 @@
   function computeAvailability(){
     const snap = snapNow();
     const out = {};
-    const slot = code => (out[code] = out[code] || {morning:0, reserved:0, shipped:0, received:0, available:0});
+    const slot = code => (out[code] = out[code] || {morning:0, reserved:0, shipped:0, received:0, adjusted:0, available:0});
     stockRows.forEach(r=>{ if(!r.isSection && r.key) slot(normCode(r.key)).morning += r.qty; });
     requestRows.forEach(r=>{
       if(!countsAgainstStock(r, snap)) return;
@@ -1644,7 +1738,8 @@
       else if(r.status === ST_SHIPPED) slot(r.codeKey).shipped += r.qty;
     });
     receiptRows.forEach(rc=>{ if(rc.atKey && rc.atKey >= snap) slot(rc.codeKey).received += rc.qty; });
-    Object.values(out).forEach(s=>{ s.available = s.morning + s.received - s.reserved - s.shipped; });
+    adjRows.forEach(a=>{ if(adjCountsF(a, snap)) slot(a.codeKey).adjusted += a.delta; });
+    Object.values(out).forEach(s=>{ s.available = s.morning + s.received - s.reserved - s.shipped + s.adjusted; });
     return out;
   }
   // Отгрузка без реализации вычитается, пока реализацию не отметят (в 1С товар ещё числится);
@@ -1747,6 +1842,7 @@
             <div><span class="detail-label">В заявках</span><span class="detail-value ${s.reserved ? 'minus' : ''}">${s.reserved ? "−" + fmtNum(s.reserved) : "0"}</span></div>
             <div><span class="detail-label">Отгружено</span><span class="detail-value ${s.shipped ? 'minus' : ''}">${s.shipped ? "−" + fmtNum(s.shipped) : "0"}</span></div>
             <div><span class="detail-label">Посажено</span><span class="detail-value ${s.received ? 'plus' : ''}">${s.received ? "+" + fmtNum(s.received) : "0"}</span></div>
+            ${s.adjusted ? `<div><span class="detail-label">Корректировки</span><span class="detail-value ${s.adjusted < 0 ? 'minus' : 'plus'}">${s.adjusted > 0 ? "+" : "−"}${fmtNum(Math.abs(s.adjusted))}</span></div>` : ""}
             <div><span class="detail-label">Год</span><span class="detail-value">${esc(r.year) || "—"}</span></div>
             <div><span class="detail-label">В коробке</span><span class="detail-value">${esc(r.box) || "—"}</span></div>
             <div><span class="detail-label">Если нет — будут</span><span class="detail-value">${esc(r.note) || "—"}</span></div>
@@ -2019,7 +2115,7 @@
     let html = `<div class="idm-section"><div class="idm-section-title">Доступно на складе</div>`;
     if(stockMatch && s){
       html += `<div class="idm-stock-row"><span class="idm-stock-qty">${fmtNum(Math.max(0, s.available))}</span><span class="idm-stock-label">шт. · ${esc(stockMatch.name)}</span></div>
-        <div class="idm-breakdown">1С${snapshot.disp ? " на " + esc(snapshot.disp) : ""}: <b>${fmtNum(s.morning)}</b> · в заявках: <b>${fmtNum(s.reserved)}</b> · отгружено: <b>${fmtNum(s.shipped)}</b> · посажено: <b>${fmtNum(s.received)}</b></div>`;
+        <div class="idm-breakdown">1С${snapshot.disp ? " на " + esc(snapshot.disp) : ""}: <b>${fmtNum(s.morning)}</b> · в заявках: <b>${fmtNum(s.reserved)}</b> · отгружено: <b>${fmtNum(s.shipped)}</b> · посажено: <b>${fmtNum(s.received)}</b>${s.adjusted ? ` · корректировки: <b>${s.adjusted > 0 ? "+" : "−"}${fmtNum(Math.abs(s.adjusted))}</b>` : ""}</div>`;
     } else {
       html += `<div class="idm-empty">Позиция не найдена в остатках</div>`;
     }
@@ -2152,6 +2248,65 @@
     });
   }
 
+  // ---------- Корректировки ----------
+  let adjFilter = "open";
+  function adjGroups(){
+    const by = new Map();
+    adjRows.forEach(a => { if(!by.has(a.id)) by.set(a.id, {id: a.id, date: a.date, type: a.type, comment: a.comment, by: a.by, status: a.status,
+      resolvedAt: a.resolvedAt, resolvedBy: a.resolvedBy, parts: []}); by.get(a.id).parts.push(a); });
+    return [...by.values()].sort((x, y) => y.id - x.id);
+  }
+  function renderAdjustments(){
+    const groups = adjGroups(), open = groups.filter(g => g.status === "Действует");
+    document.getElementById("adjCount").textContent = open.length;
+    document.getElementById("adjStatOpen").textContent = open.length;
+    const parts = open.flatMap(g => g.parts);
+    document.getElementById("adjStatMinus").textContent = fmtNum(parts.filter(p => p.delta < 0 && p.type !== "Пересорт").reduce((n, p) => n - p.delta, 0));
+    document.getElementById("adjStatPlus").textContent = fmtNum(parts.filter(p => p.delta > 0 && p.type !== "Пересорт").reduce((n, p) => n + p.delta, 0));
+    document.getElementById("adjStatAll").textContent = groups.length;
+    document.getElementById("newAdjBtn").hidden = !isWarehouse();
+    const term = (document.getElementById("adjSearch").value || "").trim().toLowerCase();
+    let list = adjFilter === "open" ? open : groups;
+    if(term) list = list.filter(g => g.parts.some(p => p.code.toLowerCase().includes(term)) || g.comment.toLowerCase().includes(term) || g.by.toLowerCase().includes(term));
+    document.getElementById("adjRowCount").textContent = `${list.length} из ${adjFilter === "open" ? open.length : groups.length}`;
+    const host = document.getElementById("adjTableHost");
+    if(!list.length){
+      host.innerHTML = `<div class="state-box"><div class="big">${groups.length ? (adjFilter === "open" ? "Действующих корректировок нет" : "Ничего не найдено") : "Корректировок пока не было"}</div>${groups.length ? "" : "<div>Недостача, излишек или пересорт — вносите сюда, остаток сразу поправится.</div>"}</div>`;
+      return;
+    }
+    const nm = code => stockIndex[normCode(code)] ? stockIndex[normCode(code)].name : "";
+    const delta = p => `<span class="adj-delta ${p.delta < 0 ? "minus" : "plus"}">${esc(p.code)} ${p.delta < 0 ? "−" : "+"}${fmtNum(Math.abs(p.delta))}</span>`;
+    let html = `<table><thead><tr><th>№</th><th>Дата</th><th>Тип</th><th>Позиции</th><th>Комментарий</th><th>Кто внёс</th><th>Статус</th><th></th></tr></thead><tbody>`;
+    list.forEach(g => {
+      const what = g.type === "Пересорт"
+        ? `${delta(g.parts.find(p => p.delta < 0) || g.parts[0])} → ${delta(g.parts.find(p => p.delta > 0) || g.parts[0])}`
+        : delta(g.parts[0]);
+      const names = g.parts.map(p => nm(p.code)).filter(Boolean).join(" → ");
+      const st = g.status === "Действует" ? `<span class="badge new">действует</span>`
+        : `<span class="adj-status">${esc(g.status)}${g.resolvedAt ? " " + esc(g.resolvedAt) : ""}${g.resolvedBy ? " · " + esc(g.resolvedBy) : ""}</span>`;
+      const acts = g.status === "Действует" && isWarehouse()
+        ? `<div class="adj-actions"><button class="adj-btn" data-adjdone="${g.id}">✅ Проведена в 1С</button><button class="adj-btn" data-adjcancel="${g.id}" title="Внесли по ошибке">✖</button></div>` : "";
+      html += `<tr class="${g.status === "Отменена" ? "old-row" : ""}"><td class="code">№${g.id}</td><td>${esc(g.date)}</td><td>${esc(g.type)}</td>
+        <td>${what}${names ? `<div class="req-meta">${esc(names)}</div>` : ""}</td><td>${esc(g.comment) || `<span class="dash">—</span>`}</td>
+        <td>${esc(g.by)}</td><td>${st}</td><td>${acts}</td></tr>`;
+    });
+    host.innerHTML = html + `</tbody></table>`;
+    const act = async (btn, how) => {
+      const id = Number(btn.dataset.adjdone || btn.dataset.adjcancel);
+      if(how === "cancel" && !confirm(`Отменить корректировку №${id}? Остаток вернётся как в 1С.`)) return;
+      btn.disabled = true; btn.textContent = "…";
+      try{ await api("resolveAdjustment", {id, how}); await syncAll(true); }
+      catch(err){ alert("Не получилось: " + err.message); btn.disabled = false; }
+    };
+    host.querySelectorAll("[data-adjdone]").forEach(b => b.addEventListener("click", () => act(b, "done")));
+    host.querySelectorAll("[data-adjcancel]").forEach(b => b.addEventListener("click", () => act(b, "cancel")));
+  }
+  document.getElementById("adjSearch").addEventListener("input", renderAdjustments);
+  document.querySelectorAll("[data-adjfilter]").forEach(b => b.addEventListener("click", () => {
+    document.querySelectorAll("[data-adjfilter]").forEach(x => x.classList.remove("active"));
+    b.classList.add("active"); adjFilter = b.dataset.adjfilter; renderAdjustments();
+  }));
+
   function renderReceiptsStats(){
     const snap = snapNow();
     const counted = receiptRows.filter(r => r.atKey && r.atKey >= snap);
@@ -2253,7 +2408,7 @@
     return {stock: rows(data.stock), pricelist: rows(data.pricelist), requests: rows(data.requests),
             receipts: rows(data.receipts), kits: rows(data.kits), shortage: rows(data.shortage),
             sales: rows(data.sales), salesPeriods: Array.isArray(data.salesPeriods) ? data.salesPeriods : [], catalog: rows(data.catalog),
-            people: Array.isArray(data.people) ? data.people : []};
+            people: Array.isArray(data.people) ? data.people : [], adjustments: rows(data.adjustments)};
   }
   function forceRelogin(){
     try{ sessionStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(PAYLOAD_KEY); }catch(e){ /* ignore */ }
@@ -3009,6 +3164,7 @@
     renderStockStats(); renderStock();
     renderRequestsStats(); renderRequests();
     renderReceiptsStats(); renderReceipts();
+    renderAdjustments();
     renderUnrealized();
     renderPricelistStats(); renderPricelist();
     renderAnalytics();
@@ -3042,6 +3198,7 @@
       pendingEvents = detectRequestEvents(requests);
       receiptRows = buildReceipts(data.receipts);
       peopleList = data.people || [];
+      adjRows = buildAdjustments(data.adjustments);
       kitIndex = buildKits(data.kits);
       shortageRows = buildShortage(data.shortage);
       salesRows = buildSales(data.sales); salesPeriods = data.salesPeriods;
@@ -3371,6 +3528,59 @@
     successText(res){ return `Посажено позиций: ${res.added}${res.newItems ? ` (новых в остатках: ${res.newItems})` : ""}. Обновляю данные…`; }
   });
   document.getElementById("newReceiptBtn").addEventListener("click", ()=> receiptForm.open());
+
+  // ---------- Корректировка: форма ----------
+  const adjType = () => (document.querySelector('input[name="adjType"]:checked') || {}).value || "shortage";
+  function adjHint(inp, hintEl){
+    const code = normCode(inp.value), s = stockIndex[code];
+    hintEl.className = "item-hint";
+    if(!code){ hintEl.textContent = ""; return; }
+    if(!s){ hintEl.textContent = "Такого кода нет в остатках"; hintEl.classList.add("bad"); return; }
+    hintEl.textContent = `${s.name} · сейчас доступно ${fmtNum(availOf(code))}`; hintEl.classList.add("good");
+  }
+  function applyAdjType(){
+    const t = adjType();
+    document.getElementById("adjCode2Field").hidden = t !== "regrade";
+    document.getElementById("adjCodeLabel").textContent = t === "regrade" ? "По 1С числится" : "Код";
+    document.getElementById("adjModalNote").textContent =
+      t === "shortage" ? "В 1С числится больше, чем лежит на складе. Доступный остаток уменьшится сразу."
+      : t === "surplus" ? "На складе лежит больше, чем в 1С. Доступный остаток увеличится сразу."
+      : "В 1С числится одно, а на полке другое: первое уменьшится, второе увеличится на то же количество.";
+  }
+  document.querySelectorAll('input[name="adjType"]').forEach(i => i.addEventListener("change", () => { hideMsg(document.getElementById("adjFormError")); applyAdjType(); }));
+  ["fldAdjCode", "fldAdjCode2"].forEach((id, i) => document.getElementById(id).addEventListener("input", () =>
+    adjHint(document.getElementById(id), document.getElementById(i ? "adjCode2Hint" : "adjCodeHint"))));
+  const adjForm = makeFormFlow({
+    overlay: "adjModalOverlay", error: "adjFormError", success: "adjFormSuccess", submit: "adjModalSubmit",
+    submitLabel: "Внести",
+    onOpen(){
+      ["fldAdjCode", "fldAdjCode2", "fldAdjQty", "fldAdjComment"].forEach(id => { document.getElementById(id).value = ""; });
+      ["adjCodeHint", "adjCode2Hint"].forEach(id => { document.getElementById(id).textContent = ""; });
+      document.querySelector('input[name="adjType"][value="shortage"]').checked = true;
+      applyAdjType();
+    },
+    focus(){ document.getElementById("fldAdjCode").focus(); },
+    validate(){
+      const a = normCode(document.getElementById("fldAdjCode").value), b = normCode(document.getElementById("fldAdjCode2").value);
+      const q = document.getElementById("fldAdjQty").value.replace(/\s/g, "");
+      if(!a) return "Укажите код";
+      if(!stockIndex[a]) return `Кода «${a}» нет в остатках`;
+      if(adjType() === "regrade"){
+        if(!b) return "Укажите, что лежит на самом деле";
+        if(!stockIndex[b]) return `Кода «${b}» нет в остатках — сначала добавьте позицию посадкой`;
+        if(a === b) return "Пересорт — это два разных кода";
+      }
+      if(!/^\d+$/.test(q) || Number(q) <= 0) return "Количество — целое число больше нуля";
+      return null;
+    },
+    send(){
+      return api("addAdjustment", {type: adjType(), code: document.getElementById("fldAdjCode").value.trim(),
+        code2: document.getElementById("fldAdjCode2").value.trim(), qty: document.getElementById("fldAdjQty").value.replace(/\s/g, ""),
+        comment: document.getElementById("fldAdjComment").value.trim()});
+    },
+    successText(res){ return `Корректировка №${res.id} внесена — остаток поправлен. Обновляю данные…`; }
+  });
+  document.getElementById("newAdjBtn").addEventListener("click", () => adjForm.open());
 
   // ---------- Telegram ----------
   const tgOverlay = document.getElementById("tgModalOverlay");
