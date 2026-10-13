@@ -1531,7 +1531,8 @@
       if(label.includes("итого") || label.includes("всего")) continue;
       if(!code && qtyRaw === ""){ out.push({isSection:true, name}); continue; }
       out.push({
-        isSection:false, code, name,
+        // у позиции без артикула ключом служит наименование (по нему её находят заявки и бот)
+        isSection:false, code, name, key: code || name, label: code || name,
         qty: qtyRaw === "" ? 0 : parseNum(qtyRaw),
         year: cell(r, col.year), box: cell(r, col.box), note: cell(r, col.note)
       });
@@ -1622,7 +1623,7 @@
     const snap = snapshot.key || todayKey();
     const out = {};
     const slot = code => (out[code] = out[code] || {morning:0, reserved:0, shipped:0, received:0, available:0});
-    stockRows.forEach(r=>{ if(!r.isSection && r.code) slot(normCode(r.code)).morning += r.qty; });
+    stockRows.forEach(r=>{ if(!r.isSection && r.key) slot(normCode(r.key)).morning += r.qty; });
     requestRows.forEach(r=>{
       if(!countsAgainstStock(r, snap)) return;
       if(HOLD_STATUSES.includes(r.status)) slot(r.codeKey).reserved += r.qty;
@@ -1679,7 +1680,7 @@
 
   function renderStock(){
     let rows = stockRows.filter(r => !r.isSection);
-    const av = r => r.code && availMap[normCode(r.code)] ? availMap[normCode(r.code)].available : r.qty;
+    const av = r => r.key && availMap[normCode(r.key)] ? availMap[normCode(r.key)].available : r.qty;
 
     if(stockFilter === "instock") rows = rows.filter(r => av(r) > 0);
     if(stockFilter === "zero") rows = rows.filter(r => av(r) <= 0);
@@ -1713,7 +1714,7 @@
     </tr></thead><tbody>`;
 
     rows.forEach((r, idx) => {
-      const s = (r.code && availMap[normCode(r.code)]) || {morning:r.qty, reserved:0, shipped:0, received:0, available:r.qty};
+      const s = (r.key && availMap[normCode(r.key)]) || {morning:r.qty, reserved:0, shipped:0, received:0, available:r.qty};
       const a = Math.max(0, s.available);
       const rowClass = a <= 0 ? "zero-row" : (a < 10 ? "low-row" : "");
       const rid = "stock_detail_" + idx;
@@ -1749,7 +1750,7 @@
     const data = stockRows.filter(r => !r.isSection);
     let zero = 0, held = 0, sum = 0;
     data.forEach(r=>{
-      const s = (r.code && availMap[normCode(r.code)]) || {available:r.qty, reserved:0};
+      const s = (r.key && availMap[normCode(r.key)]) || {available:r.qty, reserved:0};
       if(s.available <= 0) zero++;
       held += s.reserved;
       sum += Math.max(0, s.available);
@@ -1763,12 +1764,12 @@
 
   function fillCodeDatalist(){
     const dl = document.getElementById("stockCodes");
-    dl.innerHTML = stockRows.filter(r=>!r.isSection && r.code)
-      .map(r => `<option value="${esc(r.code)}">${esc(r.name)} · доступно ${fmtNum(availOf(r.code))}</option>`).join("");
-    document.getElementById("requestCodes").innerHTML = stockRows.filter(r=>!r.isSection && r.code)
-      .map(r => { const k = kitIndex[normCode(r.code)];
-        const tail = k ? `готовых ${fmtNum(availOf(r.code))} + можно собрать ${fmtNum(kitBuildable(k))} (${esc(kitPartsText(k))})` : `доступно ${fmtNum(availOf(r.code))}`;
-        return `<option value="${esc(r.code)}">${esc(r.name)} · ${tail}</option>`; }).join("") + Object.values(kitIndex)
+    dl.innerHTML = stockRows.filter(r=>!r.isSection && r.key)
+      .map(r => `<option value="${esc(r.key)}">${r.code ? esc(r.name) + " · " : "без артикула · "}доступно ${fmtNum(availOf(r.key))}</option>`).join("");
+    document.getElementById("requestCodes").innerHTML = stockRows.filter(r=>!r.isSection && r.key)
+      .map(r => { const k = kitIndex[normCode(r.key)];
+        const tail = k ? `готовых ${fmtNum(availOf(r.key))} + можно собрать ${fmtNum(kitBuildable(k))} (${esc(kitPartsText(k))})` : `доступно ${fmtNum(availOf(r.key))}`;
+        return `<option value="${esc(r.key)}">${r.code ? esc(r.name) + " · " : "без артикула · "}${tail}</option>`; }).join("") + Object.values(kitIndex)
       .filter(k => !stockIndex[normCode(k.code)])
       .map(k => `<option value="${esc(k.code)}">🧩 комплект ${esc(kitPartsText(k))} · можно собрать ${fmtNum(kitBuildable(k))}</option>`).join("");
   }
@@ -2297,7 +2298,7 @@
   /** Готовые комплекты (если такой код есть в остатках) + сколько можно собрать. */
   const kitReady = kit => stockIndex[normCode(kit.code)] ? availOf(kit.code) : 0;
   const kitAvail = kit => kitReady(kit) + kitBuildable(kit);
-  const kitPartsText = kit => kit.parts.map(p => (stockIndex[p.code] ? stockIndex[p.code].code : p.code) + (p.qty !== 1 ? "×" + p.qty : "")).join(" + ");
+  const kitPartsText = kit => kit.parts.map(p => (stockIndex[p.code] ? stockIndex[p.code].label : p.code) + (p.qty !== 1 ? "×" + p.qty : "")).join(" + ");
   /** Позиции заявки → потребность по кодам остатков (комплекты раскрыты). */
   function expandToParts(items){
     const totals = {};
@@ -2328,10 +2329,10 @@
 
   function sectionOfCode(){
     const map = {}; let cur = "";
-    stockRows.forEach(r => { if(r.isSection) cur = r.name; else if(r.code) map[normCode(r.code)] = cur; });
+    stockRows.forEach(r => { if(r.isSection) cur = r.name; else if(r.key) map[normCode(r.key)] = cur; });
     return map;
   }
-  const shownCode = code => stockIndex[code] ? stockIndex[code].code : (kitIndex[code] ? kitIndex[code].code : (rawCodeOf[code] || code));
+  const shownCode = code => stockIndex[code] ? stockIndex[code].label : (kitIndex[code] ? kitIndex[code].code : (rawCodeOf[code] || code));
   const nameOf = code => stockIndex[code] ? stockIndex[code].name : (kitIndex[code] ? kitIndex[code].name : (rawNameOf[code] || ""));
 
   function analyticsData(){
@@ -2965,7 +2966,7 @@
       const st = buildStock(data.stock);
       stockRows = st.rows;
       stockIndex = {};
-      stockRows.forEach(r => { if(!r.isSection && r.code && !stockIndex[normCode(r.code)]) stockIndex[normCode(r.code)] = r; });
+      stockRows.forEach(r => { if(!r.isSection && r.key && !stockIndex[normCode(r.key)]) stockIndex[normCode(r.key)] = r; });
       snapshot = {disp: st.snapDisp, key: dateKey(st.snapDisp)};
       pricelistRows = buildPricelist(data.pricelist);
       opsError = "";
@@ -3074,7 +3075,7 @@
         if(missing.length){ h.textContent = `${head} · в остатках нет ${missing.join(", ")}`; h.classList.add("bad"); return; }
         const short = kit.parts.filter(p => need[p.code] > availOf(p.code));
         if(short.length){
-          h.textContent = `${head} · не хватает ${short.map(p => `${stockIndex[p.code].code} (доступно ${fmtNum(availOf(p.code))}, нужно ${fmtNum(need[p.code])})`).join(", ")}`;
+          h.textContent = `${head} · не хватает ${short.map(p => `${stockIndex[p.code].label} (доступно ${fmtNum(availOf(p.code))}, нужно ${fmtNum(need[p.code])})`).join(", ")}`;
           h.classList.add("bad");
         } else {
           h.textContent = head;
@@ -3148,7 +3149,7 @@
         const absent = Object.keys(need).filter(k => !stockIndex[k]);
         if(absent.length) return `Для комплекта не хватает позиций в остатках: ${absent.join(", ")}`;
         const short = Object.entries(need).filter(([k,q]) => q > availOf(k))
-          .map(([k,q]) => `${stockIndex[k].code} — доступно ${fmtNum(availOf(k))}, нужно ${fmtNum(q)}`);
+          .map(([k,q]) => `${stockIndex[k].label} — доступно ${fmtNum(availOf(k))}, нужно ${fmtNum(q)}`);
         if(short.length){
           // спрос, который склад не закрыл, — в лист «Дефицит» (для рекомендации к заказу)
           const cm = document.getElementById("fldRequestComment");
