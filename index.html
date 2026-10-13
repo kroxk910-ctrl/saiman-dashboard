@@ -749,6 +749,11 @@
   .req-item .q{color:var(--ink-dim);}
   .req-meta{font-size:11px; color:var(--ink-faint); margin-top:4px; white-space:nowrap;}
   tr.old-row td{opacity:.5;}
+  .hidden-panel{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 12px; font-size:13px; color:var(--ink-dim);}
+  .hidden-panel select{font:inherit; padding:5px 8px; border-radius:6px; border:1px solid var(--line); background:var(--panel-2); color:var(--ink); max-width:100%;}
+  .hidden-panel-note{font-size:12px; color:var(--ink-faint); flex-basis:100%;}
+  tr.hidden-item td{opacity:.55;}
+  .hide-btn{margin-top:10px;}
   .adj-note{font-size:12.5px; color:var(--ink-faint); margin:0 0 12px; line-height:1.5;}
   .adj-delta{font-family:var(--mono); font-weight:600; white-space:nowrap;}
   .adj-delta.minus{color:var(--danger);} .adj-delta.plus{color:var(--ok);}
@@ -1094,11 +1099,18 @@
       <button class="filter-chip" data-stockfilter="instock">В наличии</button>
       <button class="filter-chip" data-stockfilter="zero">Нет в наличии</button>
       <button class="filter-chip" data-stockfilter="low">Мало (&lt;10)</button>
+      <button class="filter-chip" data-stockfilter="hidden" id="stockHiddenChip" hidden title="Позиции не на продажу — менеджеры и бот их не видят">🙈 Скрытые <span id="stockHiddenCount">0</span></button>
       <div class="toolbar-spacer"></div>
       <span class="row-count" id="stockRowCount"></span>
       <button class="new-order-btn" id="uploadStockBtn" hidden>⬆ Загрузить из 1С</button>
     </div>
 
+    <div class="hidden-panel" id="hiddenPanel" hidden>
+      <span>Скрыть целый раздел:</span>
+      <select id="hideSectionSel"></select>
+      <button class="adj-btn" id="hideSectionBtn">🙈 Скрыть раздел</button>
+      <span class="hidden-panel-note">Скрытые позиции не видят менеджеры и бот, заказать их нельзя. Посадки и корректировки — можно.</span>
+    </div>
     <div class="table-wrap">
       <div id="stockTableHost">
         <div class="state-box"><div class="spinner"></div><div class="big">Загружаем остатки…</div></div>
@@ -1577,6 +1589,8 @@
   let receiptRows = [];
   let peopleList = [];     // имена сотрудников (без PIN) — кому склад выдал без заявки
   let adjRows = [];        // лист «Корректировки»
+  let hiddenKeys = new Set();   // лист «Скрытые позиции» — не на продажу
+  const isHiddenRow = r => r && r.key && hiddenKeys.has(normCode(r.key));
   let pricelistRows = [];
   let availMap = {};       // CODE -> {morning, reserved, shipped, received, available}
 
@@ -1788,7 +1802,13 @@
   }
 
   function renderStock(){
-    let rows = stockRows.filter(r => !r.isSection);
+    const canHide = isWarehouse();
+    const hiddenTotal = stockRows.filter(r => !r.isSection && isHiddenRow(r)).length;
+    document.getElementById("stockHiddenChip").hidden = !canHide;
+    document.getElementById("stockHiddenCount").textContent = hiddenTotal;
+    if(!canHide && stockFilter === "hidden") stockFilter = "all";
+    renderHiddenPanel();
+    let rows = stockRows.filter(r => !r.isSection && (stockFilter === "hidden" ? isHiddenRow(r) : !isHiddenRow(r)));
     const av = r => r.key && availMap[normCode(r.key)] ? availMap[normCode(r.key)].available : r.qty;
 
     if(stockFilter === "instock") rows = rows.filter(r => av(r) > 0);
@@ -1807,10 +1827,12 @@
       });
     }
 
-    document.getElementById("stockRowCount").textContent = `${rows.length} из ${stockRows.filter(r=>!r.isSection).length}`;
+    document.getElementById("stockRowCount").textContent = `${rows.length} из ${stockRows.filter(r=>!r.isSection && (stockFilter === "hidden" ? isHiddenRow(r) : !isHiddenRow(r))).length}`;
     const host = document.getElementById("stockTableHost");
     if(rows.length === 0){
-      host.innerHTML = `<div class="state-box"><div class="big">Ничего не найдено</div><div>Попробуй изменить фильтр или поиск</div></div>`;
+      host.innerHTML = stockFilter === "hidden"
+        ? `<div class="state-box"><div class="big">Скрытых позиций нет</div><div>Раскройте позицию в остатках → «Скрыть из дашборда», или скройте целый раздел выше.</div></div>`
+        : `<div class="state-box"><div class="big">Ничего не найдено</div><div>Попробуй изменить фильтр или поиск</div></div>`;
       return;
     }
 
@@ -1825,7 +1847,7 @@
     rows.forEach((r, idx) => {
       const s = (r.key && availMap[normCode(r.key)]) || {morning:r.qty, reserved:0, shipped:0, received:0, available:r.qty};
       const a = Math.max(0, s.available);
-      const rowClass = a <= 0 ? "zero-row" : (a < 10 ? "low-row" : "");
+      const rowClass = (isHiddenRow(r) ? "hidden-item " : "") + (a <= 0 ? "zero-row" : (a < 10 ? "low-row" : ""));
       const rid = "stock_detail_" + idx;
       const snapLbl = snapshot.disp ? ` на ${esc(snapshot.disp)}` : "";
       html += `<tr class="${rowClass} expandable-row" data-target="${rid}">
@@ -1847,6 +1869,7 @@
             <div><span class="detail-label">В коробке</span><span class="detail-value">${esc(r.box) || "—"}</span></div>
             <div><span class="detail-label">Если нет — будут</span><span class="detail-value">${esc(r.note) || "—"}</span></div>
           </div>
+          ${isAdmin() ? `<button class="adj-btn hide-btn" data-hidekey="${esc(r.key)}" data-hidecode="${esc(r.code)}" data-hidename="${esc(r.name)}" data-hideto="${isHiddenRow(r) ? "0" : "1"}">${isHiddenRow(r) ? "👁 Вернуть в дашборд" : "🙈 Скрыть из дашборда (не на продажу)"}</button>` : ""}
         </td>
       </tr>`;
     });
@@ -1854,10 +1877,46 @@
     host.innerHTML = html;
     wireExpandableRows(host);
     wireSort(host, stockSort, renderStock);
+    host.querySelectorAll("[data-hidekey]").forEach(b => b.addEventListener("click", e => {
+      e.stopPropagation();
+      setHiddenItems([{code: b.dataset.hidecode, name: b.dataset.hidename}], b.dataset.hideto === "1", b);
+    }));
   }
 
+  async function setHiddenItems(items, hide, btn){
+    const label = btn ? btn.textContent : "";
+    if(btn){ btn.disabled = true; btn.textContent = "…"; }
+    try{ await api("setHidden", {items, hidden: hide}); await syncAll(true); }
+    catch(err){ alert("Не получилось: " + err.message); }
+    finally{ if(btn && btn.isConnected){ btn.disabled = false; btn.textContent = label; } }
+  }
+  function stockSections(){
+    const out = []; let cur = null;
+    stockRows.forEach(r => { if(r.isSection){ cur = {name: r.name, items: []}; out.push(cur); } else if(cur) cur.items.push(r); });
+    return out.filter(sct => sct.items.length);
+  }
+  function renderHiddenPanel(){
+    const panel = document.getElementById("hiddenPanel");
+    panel.hidden = !(isAdmin() && stockFilter === "hidden");
+    if(panel.hidden) return;
+    const sel = document.getElementById("hideSectionSel"), cur = sel.value;
+    sel.innerHTML = `<option value="">— раздел —</option>` + stockSections().map(sct => {
+      const open = sct.items.filter(r => !isHiddenRow(r)).length;
+      return `<option value="${esc(sct.name)}"${sct.name === cur ? " selected" : ""}>${esc(sct.name)} (${open ? "видно " + open + " из " + sct.items.length : "всё скрыто"})</option>`;
+    }).join("");
+  }
+  document.getElementById("hideSectionBtn").addEventListener("click", () => {
+    const name = document.getElementById("hideSectionSel").value;
+    const sct = stockSections().find(x => x.name === name);
+    if(!sct) return;
+    const items = sct.items.filter(r => !isHiddenRow(r));
+    if(!items.length){ alert("В этом разделе уже всё скрыто"); return; }
+    if(!confirm(`Скрыть из дашборда все позиции раздела «${name}» (${items.length})? Менеджеры и бот перестанут их видеть.`)) return;
+    setHiddenItems(items.map(r => ({code: r.code, name: r.name})), true, document.getElementById("hideSectionBtn"));
+  });
+
   function renderStockStats(){
-    const data = stockRows.filter(r => !r.isSection);
+    const data = stockRows.filter(r => !r.isSection && !isHiddenRow(r));
     let zero = 0, held = 0, sum = 0;
     data.forEach(r=>{
       const s = (r.key && availMap[normCode(r.key)]) || {available:r.qty, reserved:0};
@@ -1882,7 +1941,7 @@
         .map(c => `<option value="${esc(c.code)}">из 1С · ${esc(c.name)}</option>`).join("") +
       Object.values(catalogByName).filter(c => !inStockKeys.has(latinCode(c.name)))
         .map(c => `<option value="${esc(c.name)}">из 1С · без артикула</option>`).join("");
-    document.getElementById("requestCodes").innerHTML = stockRows.filter(r=>!r.isSection && r.key)
+    document.getElementById("requestCodes").innerHTML = stockRows.filter(r=>!r.isSection && r.key && !isHiddenRow(r))
       .map(r => { const k = kitIndex[normCode(r.key)];
         const tail = k ? `готовых ${fmtNum(availOf(r.key))} + можно собрать ${fmtNum(kitBuildable(k))} (${esc(kitPartsText(k))})` : `доступно ${fmtNum(availOf(r.key))}`;
         return `<option value="${esc(r.key)}">${r.code ? esc(r.name) + " · " : "без артикула · "}${tail}</option>`; }).join("") + Object.values(kitIndex)
@@ -2408,7 +2467,7 @@
     return {stock: rows(data.stock), pricelist: rows(data.pricelist), requests: rows(data.requests),
             receipts: rows(data.receipts), kits: rows(data.kits), shortage: rows(data.shortage),
             sales: rows(data.sales), salesPeriods: Array.isArray(data.salesPeriods) ? data.salesPeriods : [], catalog: rows(data.catalog),
-            people: Array.isArray(data.people) ? data.people : [], adjustments: rows(data.adjustments)};
+            people: Array.isArray(data.people) ? data.people : [], adjustments: rows(data.adjustments), hidden: rows(data.hidden)};
   }
   function forceRelogin(){
     try{ sessionStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(PAYLOAD_KEY); }catch(e){ /* ignore */ }
@@ -2693,6 +2752,7 @@
     const days = Math.max(7, Math.min(v.window, history || v.window));
     const out = [];
     Object.entries(demand).forEach(([code, d]) => {
+      if(hiddenKeys.has(code)) return;   // не на продажу — не рекомендуем
       const qty = d.ship + d.direct + d.sale + d.short;
       const rate = qty / days;
       if(!(rate > 0)) return;
@@ -3199,6 +3259,7 @@
       receiptRows = buildReceipts(data.receipts);
       peopleList = data.people || [];
       adjRows = buildAdjustments(data.adjustments);
+      hiddenKeys = new Set((data.hidden || []).slice(1).map(r => normCode((r[0] || "").trim() || (r[1] || "").trim())).filter(Boolean));
       kitIndex = buildKits(data.kits);
       shortageRows = buildShortage(data.shortage);
       salesRows = buildSales(data.sales); salesPeriods = data.salesPeriods;
