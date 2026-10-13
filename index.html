@@ -1084,7 +1084,7 @@
       <button class="filter-chip" data-stockfilter="low">Мало (&lt;10)</button>
       <div class="toolbar-spacer"></div>
       <span class="row-count" id="stockRowCount"></span>
-      <button class="new-order-btn" id="uploadStockBtn" hidden>⬆ Загрузить остатки из 1С</button>
+      <button class="new-order-btn" id="uploadStockBtn" hidden>⬆ Загрузить из 1С</button>
     </div>
 
     <div class="table-wrap">
@@ -1166,8 +1166,8 @@
   <!-- ============ ANALYTICS VIEW (только админ) ============ -->
   <section class="view" id="view-analytics">
     <div class="stats">
-      <div class="stat"><div class="stat-label">Отгружено, шт</div><div class="stat-value accent" id="anStatQty">—</div></div>
-      <div class="stat"><div class="stat-label">Отгрузок</div><div class="stat-value" id="anStatReq">—</div></div>
+      <div class="stat"><div class="stat-label">Продано, шт</div><div class="stat-value accent" id="anStatQty">—</div></div>
+      <div class="stat"><div class="stat-label">Отгрузок / реализаций</div><div class="stat-value" id="anStatReq">—</div></div>
       <div class="stat"><div class="stat-label">Разных позиций</div><div class="stat-value" id="anStatCodes">—</div></div>
       <div class="stat"><div class="stat-label">Самый ходовой</div><div class="stat-value" id="anStatTop">—</div></div>
     </div>
@@ -1180,6 +1180,7 @@
       <select id="anSection" class="an-select" title="Раздел из листа «Остатки»"><option value="">Все разделы</option></select>
       <label class="an-check"><input type="checkbox" id="anDirect" checked> + прямые с завода</label>
     </div>
+    <div class="ro-note" id="anSource"></div>
     <div class="an-card ro-card">
       <div class="ro-head">
         <div class="an-title" style="margin:0">🛒 Рекомендация к заказу на заводе</div>
@@ -1294,10 +1295,10 @@
 <div class="modal-overlay" id="stockUpOverlay">
   <div class="modal-box modal-box-xl">
     <div class="modal-header">
-      <span class="modal-title">Загрузка остатков из 1С</span>
+      <span class="modal-title">Загрузка из 1С</span>
       <button class="modal-close" data-close>×</button>
     </div>
-    <p class="modal-note">Отчёт «Остатки и доступность товаров» в PDF. Берём колонку «В наличии». Разметка листа «Остатки» (разделы, свои колонки) сохраняется, перед загрузкой делается резервная копия таблицы.</p>
+    <p class="modal-note"><b>Остатки</b> — отчёт «Остатки и доступность товаров» (берём «Доступно»; разметка листа сохраняется, перед загрузкой — резервная копия).<br><b>Продажи</b> — «Ведомость по товарам на складах» с регистраторами: строки «Реализация» идут в аналитику и рекомендацию к заказу. Тип отчёта определяется сам.</p>
     <label class="drop-zone" id="stockDrop">
       <input type="file" id="stockFile" accept="application/pdf,.pdf" hidden>
       <span class="drop-icon">📄</span>
@@ -1623,8 +1624,9 @@
     const slot = code => (out[code] = out[code] || {morning:0, reserved:0, shipped:0, received:0, available:0});
     stockRows.forEach(r=>{ if(!r.isSection && r.code) slot(normCode(r.code)).morning += r.qty; });
     requestRows.forEach(r=>{
+      if(!countsAgainstStock(r, snap)) return;
       if(HOLD_STATUSES.includes(r.status)) slot(r.codeKey).reserved += r.qty;
-      else if(r.status === ST_SHIPPED && shippedStillCounts(dateKey(r.shipDate), r.realized, dateKey(r.realizedAt), snap)) slot(r.codeKey).shipped += r.qty;
+      else if(r.status === ST_SHIPPED) slot(r.codeKey).shipped += r.qty;
     });
     receiptRows.forEach(rc=>{ if(rc.dateKey && rc.dateKey >= snap) slot(rc.codeKey).received += rc.qty; });
     Object.values(out).forEach(s=>{ s.available = s.morning + s.received - s.reserved - s.shipped; });
@@ -1632,6 +1634,13 @@
   }
   // Отгрузка без реализации вычитается, пока реализацию не отметят (в 1С товар ещё числится);
   // после отметки — до первой выгрузки позже дня реализации. Обычная отгрузка — до выгрузки позже дня отгрузки.
+  // Та же логика, что на сервере: реализация, проведённая раньше даты выгрузки 1С, уже учтена в остатке 1С.
+  function countsAgainstStock(r, snap){
+    if(r.status === ST_CANCELLED || r.status === ST_DIRECT) return false;
+    if(r.realized === "Нет" && !r.realizedAt) return true;
+    const realKey = r.realized === "Нет" ? dateKey(r.realizedAt) : dateKey(r.date);
+    return !realKey || !snap || realKey >= snap;
+  }
   function shippedStillCounts(shipKey, realized, realKey, snap){
     if(realized === "Нет"){
       if(!realKey) return true;
@@ -1663,7 +1672,7 @@
       return;
     }
     const stale = snapshot.key && snapshot.key < todayKey();
-    bar.innerHTML = `<span>Остатки из 1С на <span class="snap-date">${esc(snapshot.disp)}</span> · доступно = остаток − заявки в работе − отгружено + посадки</span>`
+    bar.innerHTML = `<span>Остатки из 1С на <span class="snap-date">${esc(snapshot.disp)}</span> · доступно = остаток − заявки в работе − отгружено + посадки <span title="Заявки, по которым реализация проведена раньше этой даты, уже вычтены самой 1С — второй раз не вычитаем" style="cursor:help; border-bottom:1px dotted var(--ink-faint)">(без двойного вычета)</span></span>`
       + (stale ? `<span class="snap-warn">Сегодня остатки ещё не загружали</span>` : "")
       + (opsError ? `<span class="snap-warn">Заявки не загрузились — остаток показан без учёта заявок и посадок</span>` : "");
   }
@@ -2211,7 +2220,8 @@
     }
     const rows = v => (Array.isArray(v) ? v : []).map(r => r.map(c => String(c ?? "")));
     return {stock: rows(data.stock), pricelist: rows(data.pricelist), requests: rows(data.requests),
-            receipts: rows(data.receipts), kits: rows(data.kits), shortage: rows(data.shortage)};
+            receipts: rows(data.receipts), kits: rows(data.kits), shortage: rows(data.shortage),
+            sales: rows(data.sales), salesPeriods: Array.isArray(data.salesPeriods) ? data.salesPeriods : []};
   }
   function forceRelogin(){
     try{ sessionStorage.removeItem(SESSION_KEY); }catch(e){ /* ignore */ }
@@ -2222,6 +2232,40 @@
   let kitIndex = {};
   // Лист «Дефицит»: A=Дата, B=Менеджер, C=Код, D=Хотели, E=Было, F=Не хватило
   let shortageRows = [];
+  // Лист «Продажи 1С»: A=Дата, B=Документ, C=Код, D=Наименование, E=Кол-во; salesPeriods — какие даты покрыты загрузками
+  let salesRows = [], salesPeriods = [];
+  const rawCodeOf = {}, rawNameOf = {};
+  function buildSales(rows){
+    return (rows || []).slice(1).map(r => {
+      const code = normCode(r[2]);
+      if(code){ rawCodeOf[code] = (r[2] || "").trim(); rawNameOf[code] = (r[3] || "").trim(); }
+      return {key: dateKey(r[0]), doc: (r[1] || "").trim(), code, name: (r[3] || "").trim(), qty: parseNum(r[4])};
+    }).filter(x => x.key && x.qty > 0 && (x.code || x.name));
+  }
+  const coveredBySales = k => salesPeriods.some(p => k >= p[0] && k <= p[1]);
+  /**
+   * Спрос по дням: за даты, покрытые загруженной ведомостью 1С, — продажи 1С (точно, включая прямые),
+   * за остальные — отгрузки из дашборда. Готовые комплекты раскладываем на детали.
+   */
+  function demandEvents(opts){
+    const includeDirect = !opts || opts.includeDirect !== false;
+    const today = todayKey(), ev = [];
+    const explode = (code, qty, isKitRow) => {
+      const kit = !isKitRow && kitIndex[code];
+      return kit ? kit.parts.map(p => ({code: p.code, qty: p.qty * qty})) : [{code, qty}];
+    };
+    requestRows.forEach(r => {
+      if(!(r.status === ST_SHIPPED || (includeDirect && r.status === ST_DIRECT))) return;
+      const k = dateKey(r.shipDate);
+      if(!k || k > today || coveredBySales(k)) return;
+      explode(r.codeKey, r.qty, !!r.kit).forEach(p => ev.push({id: "r" + r.id, code: p.code, qty: p.qty, key: k, manager: r.manager, kind: r.status === ST_DIRECT ? "direct" : "ship"}));
+    });
+    salesRows.forEach(x => {
+      if(x.key > today) return;
+      explode(x.code, x.qty, false).forEach(p => ev.push({id: "s" + x.doc, code: p.code, qty: p.qty, key: x.key, manager: "по 1С", kind: "sale"}));
+    });
+    return ev;
+  }
   function buildShortage(rows){
     return (rows || []).slice(1).map(r => ({key: dateKey(r[0]), manager: (r[1] || "").trim(), code: normCode(r[2]), short: parseNum(r[5])}))
       .filter(x => x.key && x.code && x.short > 0);
@@ -2287,8 +2331,8 @@
     stockRows.forEach(r => { if(r.isSection) cur = r.name; else if(r.code) map[normCode(r.code)] = cur; });
     return map;
   }
-  const shownCode = code => stockIndex[code] ? stockIndex[code].code : (kitIndex[code] ? kitIndex[code].code : code);
-  const nameOf = code => stockIndex[code] ? stockIndex[code].name : (kitIndex[code] ? kitIndex[code].name : "");
+  const shownCode = code => stockIndex[code] ? stockIndex[code].code : (kitIndex[code] ? kitIndex[code].code : (rawCodeOf[code] || code));
+  const nameOf = code => stockIndex[code] ? stockIndex[code].name : (kitIndex[code] ? kitIndex[code].name : (rawNameOf[code] || ""));
 
   function analyticsData(){
     const includeDirect = document.getElementById("anDirect").checked;
@@ -2296,16 +2340,7 @@
     const today = todayKey();
     const from = anPeriod === "all" ? "" : keyPlusDays(today, -(Number(anPeriod) - 1));
     const secOf = sectionOfCode();
-    const rows = [];
-    requestRows.forEach(r => {
-      if(!(r.status === ST_SHIPPED || (includeDirect && r.status === ST_DIRECT))) return;
-      const k = dateKey(r.shipDate);
-      if(!k || (from && k < from) || k > today) return;
-      // готовый комплект из остатков считаем по его деталям — это спрос на сам счётчик и модем
-      const kit = !r.kit && kitIndex[r.codeKey];
-      const parts = kit ? kit.parts.map(p => ({code: p.code, qty: p.qty * r.qty})) : [{code: r.codeKey, qty: r.qty}];
-      parts.forEach(p => rows.push({id: r.id, code: p.code, qty: p.qty, key: k, manager: r.manager}));
-    });
+    const rows = demandEvents({includeDirect}).filter(x => !(from && x.key < from));
     const list = section ? rows.filter(x => secOf[x.code] === section) : rows;
     const byCode = {}, byMgr = {};
     list.forEach(x => {
@@ -2355,6 +2390,11 @@
     sel.hidden = !secs.length;
 
     const d = analyticsData();
+    const fmtK = k => { const x = String(k).replace(/\D/g, ""); return x.slice(6,8) + "." + x.slice(4,6) + "." + x.slice(0,4); };
+    document.getElementById("anSource").textContent = salesPeriods.length
+      ? "Источник: продажи из 1С за " + salesPeriods.slice().sort((a, b) => a[0] < b[0] ? -1 : 1).map(p => fmtK(p[0]) + "–" + fmtK(p[1])).join(", ") +
+        " (с прямыми отгрузками), за остальные дни — отгрузки из дашборда."
+      : "Источник: отгрузки из дашборда. Загрузите «Ведомость по товарам» из 1С, чтобы видеть реальные продажи и историю.";
     document.getElementById("anStatQty").textContent = fmtNum(d.total);
     document.getElementById("anStatReq").textContent = fmtNum(d.reqCount);
     document.getElementById("anStatCodes").textContent = fmtNum(d.items.length);
@@ -2431,20 +2471,15 @@
     const v = roSettings();
     const today = todayKey();
     const from = keyPlusDays(today, -(v.window - 1));
-    const demand = {};   // код → {ship, direct, short}
-    const slot = c => demand[c] || (demand[c] = {ship: 0, direct: 0, short: 0});
+    const demand = {};   // код → {ship, direct, sale, short}
+    const slot = c => demand[c] || (demand[c] = {ship: 0, direct: 0, sale: 0, short: 0});
     let firstAny = "";
     const seen = k => { if(k && k <= today && (!firstAny || k < firstAny)) firstAny = k; };
-    requestRows.forEach(r => {
-      if(r.status !== ST_SHIPPED && r.status !== ST_DIRECT) return;
-      const k = dateKey(r.shipDate);
-      if(!k || k > today) return;
-      seen(k);
-      if(k < from) return;
-      const kind = r.status === ST_DIRECT ? "direct" : "ship";
-      const kit = !r.kit && kitIndex[r.codeKey];
-      (kit ? kit.parts.map(p => ({code: p.code, qty: p.qty * r.qty})) : [{code: r.codeKey, qty: r.qty}])
-        .forEach(p => { slot(p.code)[kind] += p.qty; });
+    salesPeriods.forEach(p => seen(p[0]));   // история начинается с начала загруженной ведомости
+    demandEvents().forEach(x => {
+      seen(x.key);
+      if(x.key < from) return;
+      slot(x.code)[x.kind] += x.qty;
     });
     shortageRows.forEach(x => {
       seen(x.key);
@@ -2458,10 +2493,12 @@
     const days = Math.max(7, Math.min(v.window, history || v.window));
     const out = [];
     Object.entries(demand).forEach(([code, d]) => {
-      const qty = d.ship + d.direct + d.short;
+      const qty = d.ship + d.direct + d.sale + d.short;
       const rate = qty / days;
       if(!(rate > 0)) return;
       const inStock = !!stockIndex[code];
+      // нет в остатках и никто не упирался в нехватку — скорее всего, закупают сразу под заказ (пришло-продано), не рекомендуем
+      if(!inStock && !d.short) return;
       const avail = inStock ? availOf(code) : 0;
       const rop = rate * (v.lead + v.safety);
       if(avail > rop) return;
@@ -2470,7 +2507,7 @@
       const order = Math.max(round, Math.ceil((target - avail) / round) * round);
       const left = Math.floor(avail / rate);
       const pl = pricelistRows.find(p => normCode(p.code) === code);
-      out.push({code, name: inStock ? stockIndex[code].name : (pl ? pl.name : "нет в остатках 1С"), shown: inStock ? stockIndex[code].code : code,
+      out.push({code, name: inStock ? stockIndex[code].name : (rawNameOf[code] || (pl ? pl.name : "нет в остатках 1С")), shown: shownCode(code),
                 rate, avail, left, order, urgent: avail <= rate * v.lead, parts: d, inStock});
     });
     out.sort((a, b) => (b.urgent - a.urgent) || (a.left - b.left) || (b.rate - a.rate));
@@ -2484,7 +2521,7 @@
     note.className = "ro-note" + (p.history && p.history < 14 ? " warn" : "");
     note.textContent = !p.history ? "Пока нет ни одной отгрузки — рекомендации появятся, когда начнутся отгрузки."
       : (p.history < 14 ? `⚠ История отгрузок пока ${p.history} дн. — рекомендации приблизительные. ` : "") +
-        `Спрос за ${p.days} дн. = отгрузки со склада + прямые с завода + то, чего не хватило менеджерам. Заказываем, если остатка не хватит на ${v.lead + v.safety} дн. (поставка ${v.lead} + запас ${v.safety}); количество — чтобы после поставки хватило на ${v.cover} дн.`;
+        `Спрос за ${p.days} дн. = ${salesPeriods.length ? "продажи из 1С (за загруженные периоды) + " : ""}отгрузки со склада + прямые с завода + то, чего не хватило менеджерам. Заказываем, если остатка не хватит на ${v.lead + v.safety} дн. (поставка ${v.lead} + запас ${v.safety}); количество — чтобы после поставки хватило на ${v.cover} дн.`;
     if(!p.list.length){
       host.innerHTML = p.history ? `<div class="state-box" style="padding:18px"><div class="big">✅ Сейчас заказывать ничего не нужно</div><div>Всех ходовых позиций хватает дольше ${v.lead + v.safety} дн.</div></div>` : "";
       return;
@@ -2494,6 +2531,7 @@
       p.list.map(x => `<tr>
         <td class="ro-pri ${x.urgent ? "urgent" : "soon"}">${x.urgent ? "🔴 срочно" : "🟡 пора"}</td>
         <td class="code">${esc(x.shown)}</td><td class="name">${esc(x.name)}<div class="ro-src">${[
+          x.parts.sale ? `продано по 1С ${fmtNum(x.parts.sale)}` : "",
           x.parts.ship ? `отгружено ${fmtNum(x.parts.ship)}` : "", x.parts.direct ? `с завода ${fmtNum(x.parts.direct)}` : "",
           x.parts.short ? `<span class="ro-short">не хватило ${fmtNum(x.parts.short)}</span>` : ""].filter(Boolean).join(" · ")}</div></td>
         <td class="num">${fmtNum(Math.round(x.rate * 10) / 10)}</td>
@@ -2609,7 +2647,8 @@
         if(!name && !code) return;
         const fixed = fixCode(code);
         if(fixed !== code) fixedCodes.push([code, fixed]);
-        const qty = "have" in val ? val.have : ("avail" in val ? val.avail : 0);
+        // «Доступно» = В наличии − Отгружается − В резерве: уже учитывает проведённые, но не вывезенные реализации
+        const qty = "avail" in val ? val.avail : ("have" in val ? val.have : 0);
         items.push({code: fixed, name, unit, qty, available: "avail" in val ? val.avail : qty});
       });
     });
@@ -2617,6 +2656,80 @@
     return {items, warnings, fixedCodes};
   }
   /*STOCKPARSER-END*/
+  /*MOVPARSER-START*/
+  // Разбор «Ведомость по товарам на складах» (1С, PDF) с регистраторами.
+  // Возвращает {period: {from, to}, sales: [{date, doc, code, name, qty}], purchases: [...], items, warnings}.
+  function parseMovementReport(pages){
+    const LOOK = {"А":"A","В":"B","С":"C","Е":"E","Н":"H","К":"K","М":"M","О":"O","Р":"P","Т":"T","Х":"X","У":"Y"};
+    const fixCode = c => /[A-Za-z]/.test(c) ? c.replace(/[АВСЕНКМОРТХУ]/g, ch => LOOK[ch]) : c;
+    const isNum = s => /^-?\d{1,3}(?:[  ]\d{3})*(?:,\d+)?$|^-?\d+(?:,\d+)?$/.test(s.trim());
+    const num = s => Number(s.replace(/[  ]/g, "").replace(",", "."));
+    const DOC_RE = /^(.+?)\s+(\S+)\s+от\s+(\d{2}\.\d{2}\.\d{4})/;
+    const out = {period: {from: "", to: ""}, sales: [], purchases: [], items: 0, warnings: []};
+    let cols = null, cur = null, stop = false;
+    pages.forEach(page => {
+      if(stop) return;
+      const sorted = page.filter(t => t.s.trim()).slice().sort((a, b) => (b.y - a.y) || (a.x - b.x));
+      const lines = [];
+      sorted.forEach(t => {
+        const ln = lines.find(l => Math.abs(l.y - t.y) <= 2);
+        if(ln) ln.items.push(t); else lines.push({y: t.y, items: [t]});
+      });
+      lines.forEach(l => l.items.sort((a, b) => a.x - b.x));
+      lines.forEach(l => {
+        if(stop) return;
+        const text = l.items.map(t => t.s).join(" ").replace(/\s+/g, " ").trim();
+        const per = text.match(/Период:\s*(\d{2}\.\d{2}\.\d{4})\s*-\s*(\d{2}\.\d{2}\.\d{4})/);
+        if(per){ out.period = {from: per[1], to: per[2]}; return; }
+        const hdr = l.items.find(t => /^Номенклатура/i.test(t.s.trim()));
+        if(hdr){
+          const at = re => { const t = l.items.find(i => re.test(i.s.trim())); return t ? t.x : null; };
+          cols = {code: at(/^Артикул/i), name: hdr.x, unit: at(/^Ед/i), start: at(/^Начальный/i), inc: at(/^Приход/i), out: at(/^Расход/i), end: at(/^Конечный/i)};
+          return;
+        }
+        if(!cols) return;
+        if(/^Итого\b/i.test(text)){ stop = true; return; }
+        const nums = l.items.filter(t => isNum(t.s) && t.x >= (cols.start || cols.unit) - 6);
+        const words = l.items.filter(t => !nums.includes(t));
+        const colOf = t => {
+          const right = t.x + (t.w || 0);
+          const order = [["start", cols.start], ["inc", cols.inc], ["out", cols.out], ["end", cols.end]].filter(c => c[1] != null);
+          let best = null;
+          order.forEach(([k, x], i) => { const next = order[i + 1] ? order[i + 1][1] : Infinity; if(right > x && right <= next + 3) best = k; });
+          return best;
+        };
+        const val = {};
+        nums.forEach(t => { const k = colOf(t); if(k && !(k in val)) val[k] = num(t.s); });
+        const first = words[0];
+        const wordText = words.map(t => t.s.trim()).join(" ").replace(/\s+/g, " ").trim();
+        // строка документа-регистратора: с отступом между колонкой артикула и наименования
+        const dm = wordText.match(DOC_RE);
+        if(dm && first && first.x > (cols.code || 0) + 6 && first.x < cols.name - 2){
+          if(!cur) return;
+          const rec = {date: dm[3], doc: dm[2], type: dm[1].trim(), item: cur};
+          if(/^Реализация/i.test(rec.type) && val.out > 0) out.sales.push(Object.assign(rec, {qty: val.out}));
+          else if(/^Приобретение|^Поступление/i.test(rec.type) && val.inc > 0) out.purchases.push(Object.assign(rec, {qty: val.inc}));
+          return;
+        }
+        const code = words.filter(t => t.x < cols.name - 2).map(t => t.s.trim()).join(" ").trim();
+        const name = words.filter(t => t.x >= cols.name - 2 && (cols.unit == null || t.x < cols.unit - 2)).map(t => t.s.trim()).join(" ").trim();
+        if(!nums.length){
+          if(cur && !code && name && !/^Основной склад$/i.test(name)) cur.name = (cur.name + " " + name).replace(/\s+/g, " ").trim();
+          return;
+        }
+        if(!code && !name) return;
+        cur = {code: fixCode(code), name};
+        out.items++;
+      });
+    });
+    const flat = r => ({date: r.date, doc: r.doc, code: r.item.code, name: r.item.name, qty: r.qty});
+    out.sales = out.sales.map(flat);
+    out.purchases = out.purchases.map(flat);
+    if(!cols) out.warnings.push("Не нашёл заголовок таблицы («Номенклатура», «Расход»). Это точно «Ведомость по товарам на складах»?");
+    return out;
+  }
+  /*MOVPARSER-END*/
+
 
   const LOOK_F = {"А":"A","В":"B","С":"C","Е":"E","Н":"H","К":"K","М":"M","О":"O","Р":"P","Т":"T","Х":"X","У":"Y"};
   const latinCode = c => normCode(c).replace(/[АВСЕНКМОРТХУ]/g, ch => LOOK_F[ch]);
@@ -2639,7 +2752,26 @@
     return {changed, zeroed, fresh, same};
   }
 
-  let stockUpItems = null;
+  let stockUpItems = null, upMode = "stock";
+  function renderSalesPreview(mv){
+    const docs = new Set(mv.sales.map(x => x.doc));
+    const byCode = {};
+    mv.sales.forEach(x => { byCode[x.code || x.name] = (byCode[x.code || x.name] || 0) + x.qty; });
+    const top = Object.entries(byCode).sort((a, b) => b[1] - a[1]).slice(0, 12);
+    const total = mv.sales.reduce((n, x) => n + x.qty, 0);
+    upEls.prev.innerHTML = `<div class="up-sum">
+        <span class="up-chip up">период: <b>${esc(mv.period.from)} – ${esc(mv.period.to)}</b></span>
+        <span class="up-chip new">реализаций: <b>${docs.size}</b></span>
+        <span class="up-chip">строк: <b>${mv.sales.length}</b></span>
+        <span class="up-chip">продано всего: <b>${fmtNum(total)}</b> шт</span></div>
+      <div class="up-note">Это продажи для аналитики и рекомендации к заказу. Остатки не меняются. Если этот период уже загружали — данные за него заменятся, без дублей.</div>
+      ${top.length ? `<div class="up-list"><table><thead><tr><th>Код</th><th>Наименование</th><th class="num">Продано</th></tr></thead><tbody>${
+        top.map(([code, q]) => { const it = mv.sales.find(x => (x.code || x.name) === code); return `<tr><td class="code">${esc(it.code || "—")}</td><td class="name">${esc(it.name)}</td><td class="num">${fmtNum(q)}</td></tr>`; }).join("")
+      }</tbody></table></div>` : `<div class="up-note">В этом периоде реализаций нет.</div>`}`;
+    upEls.opts.hidden = true;
+    upEls.submit.disabled = !mv.sales.length;
+    upEls.submit.textContent = "Загрузить продажи";
+  }
   const upEls = {overlay: document.getElementById("stockUpOverlay"), file: document.getElementById("stockFile"), drop: document.getElementById("stockDrop"),
     dropText: document.getElementById("stockDropText"), err: document.getElementById("stockUpError"), prev: document.getElementById("stockUpPreview"),
     opts: document.getElementById("stockUpOpts"), date: document.getElementById("stockUpDate"), addNew: document.getElementById("stockUpAddNew"),
@@ -2659,10 +2791,21 @@
     upEls.dropText.innerHTML = `⏳ Читаю <b>${esc(file.name)}</b>…`;
     try{
       if(!/pdf$/i.test(file.type) && !/\.pdf$/i.test(file.name)) throw new Error("нужен PDF-файл");
-      const res = parseStockReport(await pdfPages(file));
+      const pages = await pdfPages(file);
+      const head = (pages[0] || []).map(t => t.s).join(" ");
+      if(/Ведомость\s+по\s+товарам/i.test(head)){
+        const mv = parseMovementReport(pages);
+        if(mv.warnings.length) throw new Error(mv.warnings.join(" "));
+        if(!mv.period.from || !mv.period.to) throw new Error("не нашёл период ведомости («Период: … - …»)");
+        upMode = "sales"; stockUpItems = mv;
+        upEls.dropText.innerHTML = `📄 <b>${esc(file.name)}</b> · ведомость ${esc(mv.period.from)}–${esc(mv.period.to)} · нажмите, чтобы выбрать другой`;
+        renderSalesPreview(mv);
+        return;
+      }
+      const res = parseStockReport(pages);
       if(res.warnings.length) throw new Error(res.warnings.join(" "));
       if(!res.items.length) throw new Error("в файле не нашёл ни одной позиции");
-      stockUpItems = res.items;
+      upMode = "stock"; stockUpItems = res.items;
       upEls.dropText.innerHTML = `📄 <b>${esc(file.name)}</b> · ${res.items.length} позиций · нажмите, чтобы выбрать другой`;
       renderStockUpPreview(res);
     }catch(err){
@@ -2694,6 +2837,17 @@
   upEls.drop.addEventListener("drop", e => { const f = e.dataTransfer && e.dataTransfer.files[0]; if(f) handleStockFile(f); });
   upEls.submit.addEventListener("click", async () => {
     if(!stockUpItems) return;
+    if(upMode === "sales"){
+      const mv = stockUpItems;
+      upEls.submit.disabled = true; upEls.submit.textContent = "Загружаю…"; hideMsg(upEls.err);
+      try{
+        const r = await api("uploadSales", {from: mv.period.from, to: mv.period.to,
+          rows: mv.sales.map(x => ({date: x.date, doc: x.doc, code: x.code, name: x.name, qty: x.qty}))});
+        showMsg(upEls.ok, `✓ Продажи за ${r.from}–${r.to} загружены: ${r.docs} реализаций, ${r.added} строк${r.replaced ? ` (заменено старых: ${r.replaced})` : ""}.`);
+        upEls.submit.textContent = "Готово"; stockUpItems = null; syncAll(true);
+      }catch(err){ showMsg(upEls.err, err.message); upEls.submit.disabled = false; upEls.submit.textContent = "Загрузить продажи"; }
+      return;
+    }
     const iso = upEls.date.value; const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if(!m){ showMsg(upEls.err, "Укажите дату выгрузки"); return; }
     upEls.submit.disabled = true; upEls.submit.textContent = "Загружаю…"; hideMsg(upEls.err);
@@ -2821,6 +2975,7 @@
       receiptRows = buildReceipts(data.receipts);
       kitIndex = buildKits(data.kits);
       shortageRows = buildShortage(data.shortage);
+      salesRows = buildSales(data.sales); salesPeriods = data.salesPeriods;
       renderAll();
       notifyAll(pendingEvents); pendingEvents = [];
       document.getElementById("footTime").textContent = new Date().toLocaleTimeString("ru-RU");
@@ -3123,7 +3278,7 @@
       return;
     }
     if(state === "linked"){
-      tgBody.innerHTML = `<div class="tg-linked">✅ Telegram подключён. Сюда приходят ${tgWhat()}.</div><p class="modal-note">📄 Можно переслать боту <b>счёт на оплату</b> PDF из 1С — он сам сделает заявку на склад.</p>
+      tgBody.innerHTML = `<div class="tg-linked">✅ Telegram подключён. Сюда приходят ${tgWhat()}.</div><p class="modal-note">📄 Можно переслать боту <b>счёт на оплату</b> или <b>накладную</b> PDF из 1С — он сам сделает заявку на склад.</p>
         <div class="modal-actions" style="margin-top:10px">
           <button class="modal-btn danger" id="tgUnlink">Отключить Telegram</button>
         </div>`;
