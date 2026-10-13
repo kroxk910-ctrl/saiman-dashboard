@@ -997,6 +997,9 @@
   .up-note{font-size:12px; color:var(--ink-faint); margin:-4px 0 10px;}
   .up-opts{display:flex; flex-wrap:wrap; align-items:center; gap:10px 20px; margin-bottom:12px; font-size:13px; color:var(--ink-dim);}
   .up-opts input[type="date"]{background:var(--bg); border:1px solid var(--line); color:var(--ink); padding:6px 8px; border-radius:6px; font-family:var(--sans);}
+
+  .item-name{width:100%; margin-top:6px; background:var(--bg); border:1px solid var(--wait); color:var(--ink); font-family:var(--sans); font-size:13px; padding:9px 12px; border-radius:7px; outline:none;}
+  .item-name:focus{border-color:var(--accent);}
 </style>
 </head>
 <body>
@@ -1237,6 +1240,7 @@
 
 <datalist id="stockCodes"></datalist>
 <datalist id="requestCodes"></datalist>
+<datalist id="receiptCodes"></datalist>
 <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 <div class="an-tip" id="anTip"></div>
 
@@ -1766,6 +1770,12 @@
     const dl = document.getElementById("stockCodes");
     dl.innerHTML = stockRows.filter(r=>!r.isSection && r.key)
       .map(r => `<option value="${esc(r.key)}">${r.code ? esc(r.name) + " · " : "без артикула · "}доступно ${fmtNum(availOf(r.key))}</option>`).join("");
+    const inStockKeys = new Set(stockRows.filter(r => !r.isSection && r.key).map(r => latinCode(r.key)));
+    document.getElementById("receiptCodes").innerHTML = dl.innerHTML +
+      Object.values(catalogByCode).filter(c => !inStockKeys.has(latinCode(c.code)))
+        .map(c => `<option value="${esc(c.code)}">из 1С · ${esc(c.name)}</option>`).join("") +
+      Object.values(catalogByName).filter(c => !inStockKeys.has(latinCode(c.name)))
+        .map(c => `<option value="${esc(c.name)}">из 1С · без артикула</option>`).join("");
     document.getElementById("requestCodes").innerHTML = stockRows.filter(r=>!r.isSection && r.key)
       .map(r => { const k = kitIndex[normCode(r.key)];
         const tail = k ? `готовых ${fmtNum(availOf(r.key))} + можно собрать ${fmtNum(kitBuildable(k))} (${esc(kitPartsText(k))})` : `доступно ${fmtNum(availOf(r.key))}`;
@@ -2222,7 +2232,7 @@
     const rows = v => (Array.isArray(v) ? v : []).map(r => r.map(c => String(c ?? "")));
     return {stock: rows(data.stock), pricelist: rows(data.pricelist), requests: rows(data.requests),
             receipts: rows(data.receipts), kits: rows(data.kits), shortage: rows(data.shortage),
-            sales: rows(data.sales), salesPeriods: Array.isArray(data.salesPeriods) ? data.salesPeriods : []};
+            sales: rows(data.sales), salesPeriods: Array.isArray(data.salesPeriods) ? data.salesPeriods : [], catalog: rows(data.catalog)};
   }
   function forceRelogin(){
     try{ sessionStorage.removeItem(SESSION_KEY); }catch(e){ /* ignore */ }
@@ -2243,6 +2253,19 @@
       return {key: dateKey(r[0]), doc: (r[1] || "").trim(), code, name: (r[3] || "").trim(), qty: parseNum(r[4])};
     }).filter(x => x.key && x.qty > 0 && (x.code || x.name));
   }
+  // Номенклатура из 1С (справочник + продажи): код → наименование, для позиций, которых сейчас нет в остатках
+  let catalogByCode = {}, catalogByName = {};
+  function buildCatalog(rows){
+    catalogByCode = {}; catalogByName = {};
+    const add = (code, name) => {
+      code = (code || "").trim(); name = (name || "").trim();
+      if(code) catalogByCode[latinCode(code)] = {code, name};
+      else if(name) catalogByName[nameKeyF(name)] = {code: "", name};
+    };
+    (rows || []).slice(1).forEach(r => add(r[0], r[1]));
+    salesRows.forEach(x => { if(!catalogByCode[latinCode(rawCodeOf[x.code] || x.code)]) add(rawCodeOf[x.code] || x.code, x.name); });
+  }
+  const catalogFind = v => catalogByCode[latinCode(v)] || catalogByName[nameKeyF(v)] || null;
   const coveredBySales = k => salesPeriods.some(p => k >= p[0] && k <= p[1]);
   /**
    * Спрос по дням: за даты, покрытые загруженной ведомостью 1С, — продажи 1С (точно, включая прямые),
@@ -2666,7 +2689,7 @@
     const isNum = s => /^-?\d{1,3}(?:[  ]\d{3})*(?:,\d+)?$|^-?\d+(?:,\d+)?$/.test(s.trim());
     const num = s => Number(s.replace(/[  ]/g, "").replace(",", "."));
     const DOC_RE = /^(.+?)\s+(\S+)\s+от\s+(\d{2}\.\d{2}\.\d{4})/;
-    const out = {period: {from: "", to: ""}, sales: [], purchases: [], items: 0, warnings: []};
+    const out = {period: {from: "", to: ""}, sales: [], purchases: [], items: 0, catalog: [], warnings: []};
     let cols = null, cur = null, stop = false;
     pages.forEach(page => {
       if(stop) return;
@@ -2720,6 +2743,7 @@
         }
         if(!code && !name) return;
         cur = {code: fixCode(code), name};
+        out.catalog.push(cur);
         out.items++;
       });
     });
@@ -2843,7 +2867,8 @@
       upEls.submit.disabled = true; upEls.submit.textContent = "Загружаю…"; hideMsg(upEls.err);
       try{
         const r = await api("uploadSales", {from: mv.period.from, to: mv.period.to,
-          rows: mv.sales.map(x => ({date: x.date, doc: x.doc, code: x.code, name: x.name, qty: x.qty}))});
+          rows: mv.sales.map(x => ({date: x.date, doc: x.doc, code: x.code, name: x.name, qty: x.qty})),
+          catalog: mv.catalog.map(x => ({code: x.code, name: x.name}))});
         showMsg(upEls.ok, `✓ Продажи за ${r.from}–${r.to} загружены: ${r.docs} реализаций, ${r.added} строк${r.replaced ? ` (заменено старых: ${r.replaced})` : ""}.`);
         upEls.submit.textContent = "Готово"; stockUpItems = null; syncAll(true);
       }catch(err){ showMsg(upEls.err, err.message); upEls.submit.disabled = false; upEls.submit.textContent = "Загрузить продажи"; }
@@ -2977,6 +3002,7 @@
       kitIndex = buildKits(data.kits);
       shortageRows = buildShortage(data.shortage);
       salesRows = buildSales(data.sales); salesPeriods = data.salesPeriods;
+      buildCatalog(data.catalog);
       renderAll();
       notifyAll(pendingEvents); pendingEvents = [];
       document.getElementById("footTime").textContent = new Date().toLocaleTimeString("ru-RU");
@@ -3083,6 +3109,21 @@
         }
         return;
       }
+      const nameInp = block.querySelector(".item-name");
+      if(nameInp) nameInp.hidden = !!s;
+      if(!s && mode === "receipt"){
+        const c = catalogFind(block.querySelector(".item-code").value);
+        if(c && c.name){
+          if(!nameInp.value.trim() || nameInp.dataset.auto === "1"){ nameInp.value = c.name; nameInp.dataset.auto = "1"; }
+          block.dataset.noCode = c.code ? "" : "1";
+          h.textContent = `Нет в остатках — нашёл в 1С: «${c.name}». При посадке добавится в остатки`;
+          h.classList.add("good");
+          return;
+        }
+        if(nameInp.dataset.auto === "1"){ nameInp.value = ""; nameInp.dataset.auto = ""; }
+        block.dataset.noCode = "";
+        h.textContent = "Такой позиции нет в остатках и в 1С — впишите наименование, при посадке она добавится в остатки"; h.classList.add("bad"); return;
+      }
       if(!s){ h.textContent = "Такого кода нет в остатках"; h.classList.add("bad"); return; }
       const a = availOf(code);
       if(mode === "request"){
@@ -3108,11 +3149,13 @@
       const block = document.createElement("div");
       block.className = "item-block";
       block.innerHTML = `<div class="item-row">
-          <input type="text" class="item-code" list="${mode === "request" ? "requestCodes" : "stockCodes"}" placeholder="Код" autocomplete="off">
+          <input type="text" class="item-code" list="${mode === "request" ? "requestCodes" : mode === "receipt" ? "receiptCodes" : "stockCodes"}" placeholder="Код" autocomplete="off">
           <input type="text" class="item-qty" inputmode="numeric" placeholder="Кол-во">
           <button type="button" class="item-remove" title="Удалить позицию">×</button>
-        </div><div class="item-hint"></div>`;
+        </div>${mode === "receipt" ? `<input type="text" class="item-name" placeholder="Наименование новой позиции (как в 1С)" hidden>` : ""}<div class="item-hint"></div>`;
       listEl.appendChild(block);
+      const nmInp = block.querySelector(".item-name");
+      if(nmInp) nmInp.addEventListener("input", () => { nmInp.dataset.auto = ""; });   // вписали сами — не перезаписываем из 1С
       block.querySelectorAll("input").forEach(inp => inp.addEventListener("input", ()=>{ refresh(); listEl.closest(".modal-box").querySelector(".form-error").classList.remove("show"); }));
       block.querySelector(".item-remove").addEventListener("click", ()=>{ block.remove(); updateRemove(); refresh(); });
       updateRemove();
@@ -3124,7 +3167,10 @@
       listEl.querySelectorAll(".item-block").forEach(b=>{
         const code = b.querySelector(".item-code").value.trim();
         const qty = b.querySelector(".item-qty").value.replace(/\s/g,"");
-        if(code || qty) items.push({code, qty});
+        const nm = b.querySelector(".item-name");
+        const name = nm && !nm.hidden ? nm.value.trim() : "";
+        const noCode = b.dataset.noCode === "1";
+        if(code || qty) items.push(name ? (noCode ? {code, qty, name, noCode} : {code, qty, name}) : {code, qty});
       });
       return items;
     }
@@ -3141,6 +3187,8 @@
         const kit = mode === "request" && !direct() ? kitOf(key) : null;
         if(kit){
           /* части проверим ниже по общей потребности */
+        } else if(!stockIndex[key] && mode === "receipt"){
+          if(!it.name || it.name.length < 3) return `«${it.code}» нет в остатках — впишите наименование новой позиции`;
         } else if(!stockIndex[key] && !direct()) return `Кода «${it.code}» нет в остатках`;
         totals[key] = (totals[key] || 0) + Number(it.qty);
       }
@@ -3252,7 +3300,7 @@
     focus(){ receiptEditor.focusFirst(); },
     validate(){ return receiptEditor.validate(); },
     send(){ return api("addReceipt", {items: receiptEditor.collect(), comment: document.getElementById("fldReceiptComment").value.trim()}); },
-    successText(res){ return `Посажено позиций: ${res.added}. Обновляю данные…`; }
+    successText(res){ return `Посажено позиций: ${res.added}${res.newItems ? ` (новых в остатках: ${res.newItems})` : ""}. Обновляю данные…`; }
   });
   document.getElementById("newReceiptBtn").addEventListener("click", ()=> receiptForm.open());
 
