@@ -745,6 +745,15 @@
   .detail-value.plus{color:var(--ok);}
   .detail-value.minus{color:var(--wait);}
 
+  .req-edit{margin-left:6px; border:1px solid var(--line); background:var(--panel); border-radius:6px; padding:2px 6px; font-size:13px; cursor:pointer; vertical-align:middle;}
+  .req-edit:hover{border-color:var(--accent);}
+  .edit-line{display:grid; grid-template-columns:1fr 110px; gap:10px; align-items:center; padding:10px 0; border-bottom:1px solid var(--line);}
+  .edit-line:last-child{border-bottom:none;}
+  .edit-line .el-code{font-weight:700; color:var(--ink);}
+  .edit-line .el-name{font-size:13px; color:var(--ink-faint);}
+  .edit-line .el-hint{font-size:13px; color:var(--ink-dim);}
+  .edit-line .el-hint.bad{color:var(--danger);}
+  .edit-line input{width:100%; padding:8px 10px; font-size:16px; border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--ink); text-align:right;}
   td.req-id{font-family:var(--sans); font-size:16px; font-variant-numeric:tabular-nums; letter-spacing:.2px; color:var(--ink); font-weight:700; white-space:nowrap;}
   .req-items{display:flex; flex-direction:column; gap:3px;}
   .req-item{font-family:var(--mono); font-size:14px; color:var(--accent);}
@@ -1402,6 +1411,23 @@
     <div class="modal-actions">
       <button class="modal-btn cancel" data-close>Отмена</button>
       <button class="modal-btn submit" id="stockUpSubmit" disabled>Загрузить</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="editReqModalOverlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title" id="editReqTitle">Изменить заявку</span>
+      <button class="modal-close" data-close>×</button>
+    </div>
+    <p class="modal-note">Поменяйте количество. 0 — убрать позицию. Менеджер и склад получат уведомление, в комментарии останется пометка, что изменено.</p>
+    <div id="editReqLines"></div>
+    <div class="form-error" id="editReqError"></div>
+    <div class="form-success" id="editReqSuccess"></div>
+    <div class="modal-actions">
+      <button class="modal-btn cancel" data-close>Отмена</button>
+      <button class="modal-btn submit" id="editReqSubmit">Сохранить</button>
     </div>
   </div>
 </div>
@@ -2161,7 +2187,7 @@
       else if(req.status === ST_SHIPPED && req.shipDate) meta = `отгружена ${esc(req.shipDate)}${req.changedBy ? " · " + esc(req.changedBy) : ""}`;
       else if(req.status !== ST_NEW && req.changedBy) meta = esc(req.changedBy);
       html += `<tr class="${req.status === ST_CANCELLED ? 'old-row' : ''}">
-        <td class="req-id">№${req.id}</td>
+        <td class="req-id">№${req.id}${canEditReq(req) ? `<button type="button" class="req-edit" data-edit="${req.id}" title="Изменить количество">✏️</button>` : ""}</td>
         <td><div class="req-items">${req.lines.map(lineHtml).join("")}</div></td>
         <td>${badge}${isUnrealized(req) ? `<span class="real-tag">без реализации</span>` : ""}${meta ? `<div class="req-meta">${meta}</div>` : ""}${isLocked(req) ? `<div class="req-meta">🔒 изменить или удалить можно после реализации</div>` : ""}${req.realized === "Нет" && req.realizedAt ? `<div class="req-meta">реализация проведена ${esc(req.realizedAt)}</div>` : ""}</td>
         <td>${esc(req.manager)}</td>
@@ -2180,6 +2206,7 @@
       });
     });
     wireSort(host, requestSort, renderRequests);
+    wireEditReq(host);
   }
 
   function renderRequestsStats(){
@@ -2350,7 +2377,7 @@
     </tr></thead><tbody>`;
     rows.forEach(req=>{
       html += `<tr>
-        <td class="req-id">№${req.id}</td>
+        <td class="req-id">№${req.id}${canEditReq(req) ? `<button type="button" class="req-edit" data-edit="${req.id}" title="Изменить количество">✏️</button>` : ""}</td>
         <td><div class="req-items">${req.lines.map(lineHtml).join("")}</div></td>
         <td><span class="badge ${statusClass(req.status)}">${esc(req.status)}</span>${(() => {
           if(!(req.status === ST_SHIPPED || req.status === ST_DIRECT) || !req.shipDate) return "";
@@ -2365,6 +2392,7 @@
     });
     html += `</tbody></table>`;
     host.innerHTML = html;
+    wireEditReq(host);
     host.querySelectorAll("[data-real]").forEach(btn=>{
       btn.addEventListener("click", ()=>{
         const req = requests.find(r => String(r.id) === btn.dataset.real);
@@ -2372,6 +2400,74 @@
       });
     });
   }
+
+  // ---------- Изменить количество в заявке (завсклад и админ) ----------
+  const canEditReq = req => isWarehouse() && req.status !== ST_CANCELLED;
+  function wireEditReq(host){
+    host.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", e => {
+      e.stopPropagation();
+      const req = requests.find(r => String(r.id) === b.dataset.edit);
+      if(req) openEditReq(req);
+    }));
+  }
+  let editReq = null;
+  function editKey(line){ return line.kit ? "kit:" + line.parts[0].kit : "code:" + normCode(line.code); }
+  function openEditReq(req){
+    editReq = req;
+    const ov = document.getElementById("editReqModalOverlay");
+    document.getElementById("editReqTitle").textContent = `Изменить заявку №${req.id} · ${req.manager}`;
+    hideMsg(document.getElementById("editReqError")); hideMsg(document.getElementById("editReqSuccess"));
+    const sub = document.getElementById("editReqSubmit"); sub.disabled = false; sub.textContent = "Сохранить";
+    const box = document.getElementById("editReqLines");
+    box.innerHTML = req.lines.map((l, i) => {
+      const s = stockIndex[normCode(l.code)];
+      const name = l.kit ? "комплект, собрать: " + l.parts.map(p => p.code).join(" + ") : (s ? s.name : "");
+      return `<div class="edit-line" data-i="${i}">
+        <div><div class="el-code">${l.kit ? "🧩 " : ""}${esc(l.code)} <span class="el-name">было ${fmtNum(l.qty)}</span></div>
+          <div class="el-name">${esc(name)}</div><div class="el-hint"></div></div>
+        <input type="text" inputmode="numeric" value="${l.qty}">
+      </div>`;
+    }).join("");
+    const hold = HOLD_STATUSES.includes(req.status) && req.type !== TYPE_FACTORY;
+    box.querySelectorAll(".edit-line").forEach(row => {
+      const l = req.lines[Number(row.dataset.i)], inp = row.querySelector("input"), hint = row.querySelector(".el-hint");
+      const upd = () => {
+        const q = inp.value.replace(/\s/g, "");
+        hint.className = "el-hint"; hint.textContent = "";
+        if(!/^\d+$/.test(q)){ hint.textContent = "целое число"; hint.classList.add("bad"); return; }
+        if(Number(q) === 0){ hint.textContent = "позиция будет убрана"; hint.classList.add("bad"); return; }
+        if(!hold || l.kit) return;
+        const free = availOf(normCode(l.code)) + l.qty;   // доступно, если бы этой строки не было
+        hint.textContent = `можно до ${fmtNum(free)}`;
+        if(Number(q) > free) hint.classList.add("bad");
+      };
+      inp.addEventListener("input", () => { upd(); hideMsg(document.getElementById("editReqError")); });
+      upd();
+    });
+    openOverlay(ov);
+    setTimeout(() => { const f = box.querySelector("input"); if(f){ f.focus(); f.select(); } }, 50);
+  }
+  document.getElementById("editReqSubmit").addEventListener("click", async () => {
+    const req = editReq; if(!req) return;
+    const err = document.getElementById("editReqError"), ok = document.getElementById("editReqSuccess"), sub = document.getElementById("editReqSubmit");
+    hideMsg(err);
+    const items = [...document.querySelectorAll("#editReqLines .edit-line")].map(row => {
+      const l = req.lines[Number(row.dataset.i)];
+      return {key: editKey(l), qty: row.querySelector("input").value.replace(/\s/g, ""), was: l.qty};
+    });
+    if(items.some(it => !/^\d+$/.test(it.qty))){ showMsg(err, "Количество — целое число (0 — убрать позицию)"); return; }
+    if(items.every(it => Number(it.qty) === 0)){ showMsg(err, "Нельзя убрать все позиции — лучше отмените заявку"); return; }
+    if(items.every(it => Number(it.qty) === it.was)){ closeOverlay(document.getElementById("editReqModalOverlay")); return; }
+    sub.disabled = true; sub.textContent = "Сохраняю…";
+    try{
+      const res = await api("editRequest", {id: req.id, items: items.map(it => ({key: it.key, qty: it.qty}))});
+      showMsg(ok, `Сохранено: ${(res.changes || []).join(", ")}${res.warn ? " · ⚠ " + res.warn : ""}`);
+      sub.textContent = "Готово ✓";
+      setTimeout(() => { closeOverlay(document.getElementById("editReqModalOverlay")); syncAll(true); }, res.warn ? 2500 : 900);
+    }catch(e){
+      showMsg(err, e.message); sub.disabled = false; sub.textContent = "Сохранить";
+    }
+  });
 
   async function markRealized(req, btn){
     const label = linesText(req);
