@@ -765,6 +765,12 @@
   .rev-actions{display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;}
   .item-modem{font-size:12px; color:var(--ink-dim); margin-top:4px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
   .item-modem b{font-family:var(--mono); color:var(--ink);}
+  .item-sup{font-size:12px; color:var(--ink-dim); margin-top:4px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
+  .item-sup .sup-name{color:var(--ink-faint);}
+  .item-sup .bad{color:var(--danger);}
+  .sup-load{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:-6px 0 14px;}
+  .sup-status{font-size:12px; color:var(--ink-dim);}
+  .sup-status.bad{color:var(--danger);} .sup-status.ok{color:var(--ok);}
   .item-modem .ok{color:var(--ok);} .item-modem .bad{color:var(--danger);}
   .modem-set{display:flex; align-items:center; gap:6px; margin-top:10px; flex-wrap:wrap; font-size:12.5px; color:var(--ink-dim);}
   .modem-set select{font:inherit; padding:4px 8px; border-radius:6px; border:1px solid var(--line); background:var(--panel-2); color:var(--ink);}
@@ -1406,6 +1412,11 @@
       <button class="modal-close" data-close>×</button>
     </div>
     <p class="modal-note">Товар уже на складе, а накладной от завода ещё нет (поступление в 1С не проведено). Количество сразу добавится к доступному остатку и будет держаться, пока бухгалтерия не проведёт накладную — тогда приход закроется сам.</p>
+    <div class="sup-load">
+      <button type="button" class="adj-btn" id="supInvoiceBtn">📄 Загрузить счёт поставщика</button>
+      <input type="file" id="supInvoiceFile" accept="application/pdf,.pdf" hidden>
+      <span class="sup-status" id="supInvoiceStatus">PDF «Счёт на оплату» от завода — позиции заполнятся сами</span>
+    </div>
 
     <div class="form-field">
       <label>Позиции <span class="required">*</span></label>
@@ -2218,7 +2229,7 @@
   // ---------- Server calls ----------
   // Свежие данные, пришедшие вместе с ответом (вход, любое действие) — следующему syncAll не нужен отдельный запрос
   let freshPayload = null;
-  const READ_ACTIONS = ["login", "data", "telegramStatus"];
+  const READ_ACTIONS = ["login", "data", "telegramStatus", "parseSupplierInvoice"];
   async function api(action, payload){
     const body = Object.assign({action, pin: currentUser ? currentUser.pin : ""}, payload);
     if(!READ_ACTIONS.includes(action)) body.withData = true;
@@ -3667,9 +3678,27 @@
         refresh();
       });
     }
+    // строка из счёта поставщика: что было в счёте и, если код не узнан, похожие коды кнопками
+    function supHint(block, code){
+      const box = block.querySelector(".item-sup");
+      if(!box) return;
+      const sup = block._sup;
+      if(!sup){ box.hidden = true; box.innerHTML = ""; return; }
+      box.hidden = false;
+      const name = `<span class="sup-name">Из счёта: ${esc(sup.name)}${sup.rest ? " (остаток после раздачи по счётчикам)" : ""}</span>`;
+      if(code){ box.innerHTML = name; return; }
+      const cands = (sup.candidates || []).filter(c => stockIndex[normCode(c.code)]);
+      box.innerHTML = name + (cands.length
+        ? ` <span class="bad">— какой код?</span> ` + cands.map(c => `<button type="button" class="adj-btn sup-pick" data-code="${esc(c.code)}" title="${esc(c.name)}">${esc(c.code)}</button>`).join(" ")
+        : ` <span class="bad">— в остатках нет: впишите новый код</span>`);
+      box.querySelectorAll(".sup-pick").forEach(b => b.addEventListener("click", () => {
+        block.querySelector(".item-code").value = b.dataset.code; refresh();
+      }));
+    }
     function hintFor(block){
       const h = block.querySelector(".item-hint");
       const code = normCode(block.querySelector(".item-code").value);
+      supHint(block, code);
       modemHint(block, code);
       h.className = "item-hint";
       if(!code){ h.textContent = ""; return; }
@@ -3704,6 +3733,7 @@
           return;
         }
         if(nameInp.dataset.auto === "1"){ nameInp.value = ""; nameInp.dataset.auto = ""; }
+        if(block._sup && !nameInp.value.trim()){ nameInp.value = block._sup.name; nameInp.dataset.auto = "sup"; }
         block.dataset.noCode = "";
         h.textContent = "Такой позиции нет в остатках и в 1С — впишите наименование, при приходе она добавится в остатки"; h.classList.add("bad"); return;
       }
@@ -3735,7 +3765,7 @@
           <input type="text" class="item-code" list="${mode === "request" ? "requestCodes" : mode === "receipt" ? "receiptCodes" : "stockCodes"}" placeholder="Код" autocomplete="off">
           <input type="text" class="item-qty" inputmode="numeric" placeholder="Кол-во">
           <button type="button" class="item-remove" title="Удалить позицию">×</button>
-        </div>${mode === "receipt" ? `<input type="text" class="item-name" placeholder="Наименование новой позиции (как в 1С)" hidden>` : ""}<div class="item-hint"></div><div class="item-modem" hidden></div>`;
+        </div>${mode === "receipt" ? `<input type="text" class="item-name" placeholder="Наименование новой позиции (как в 1С)" hidden>` : ""}<div class="item-hint"></div>${mode === "receipt" ? `<div class="item-sup" hidden></div>` : ""}<div class="item-modem" hidden></div>`;
       listEl.appendChild(block);
       const nmInp = block.querySelector(".item-name");
       if(nmInp) nmInp.addEventListener("input", () => { nmInp.dataset.auto = ""; });   // вписали сами — не перезаписываем из 1С
@@ -3790,9 +3820,26 @@
       }
       return null;
     }
+    // позиции из счёта поставщика: [{code, qty, name, candidates, rest}]
+    function fill(items){
+      listEl.innerHTML = "";
+      items.forEach(it => {
+        const b = add();
+        b._sup = it;
+        b.querySelector(".item-code").value = it.code || "";
+        b.querySelector(".item-qty").value = it.qty || "";
+      });
+      if(!items.length) add();
+      updateRemove(); refresh();
+    }
+    // что запомнить: название у поставщика → выбранный код (модемы сервер не запоминает)
+    function learn(){
+      return [...listEl.querySelectorAll(".item-block")].filter(b => b._sup && !b._sup.modem)
+        .map(b => ({name: b._sup.name, code: b.querySelector(".item-code").value.trim()})).filter(x => x.code);
+    }
     return {
       reset(){ listEl.innerHTML = ""; add(); },
-      refresh, collect, validate,
+      refresh, collect, validate, fill, learn,
       focusFirst(){ const f = listEl.querySelector(".item-code"); if(f) f.focus(); }
     };
   }
@@ -3904,13 +3951,45 @@
   const receiptForm = makeFormFlow({
     overlay:"receiptModalOverlay", error:"receiptFormError", success:"receiptFormSuccess", submit:"receiptModalSubmit",
     submitLabel:"Внести приход",
-    onOpen(){ document.getElementById("fldReceiptComment").value = ""; receiptEditor.reset(); },
+    onOpen(){ document.getElementById("fldReceiptComment").value = ""; receiptEditor.reset(); supStatus("PDF «Счёт на оплату» от завода — позиции заполнятся сами", ""); },
     focus(){ receiptEditor.focusFirst(); },
     validate(){ return receiptEditor.validate(); },
-    send(){ return api("addReceipt", {items: receiptEditor.collect(), comment: document.getElementById("fldReceiptComment").value.trim()}); },
+    send(){ return api("addReceipt", {items: receiptEditor.collect(), comment: document.getElementById("fldReceiptComment").value.trim(), learn: receiptEditor.learn()}); },
     successText(res){ return `Приход внесён, позиций: ${res.added}${res.newItems ? ` (новых в остатках: ${res.newItems})` : ""}${res.alreadyIn1C ? ` · ${res.alreadyIn1C} уже есть в 1С — закрыто сразу` : ""}. Обновляю данные…`; }
   });
   document.getElementById("newReceiptBtn").addEventListener("click", ()=> receiptForm.open());
+
+  // ---------- Счёт поставщика → позиции прихода ----------
+  function supStatus(text, cls){
+    const el = document.getElementById("supInvoiceStatus");
+    el.textContent = text; el.className = "sup-status" + (cls ? " " + cls : "");
+  }
+  // текст PDF в порядке, как он записан в файле (так же, как его видит бот)
+  async function pdfText(file){
+    const pages = await pdfPages(file);
+    return pages.map(items => items.map(i => i.s).filter(x => x.trim()).join("\n")).join("\n");
+  }
+  document.getElementById("supInvoiceBtn").addEventListener("click", () => document.getElementById("supInvoiceFile").click());
+  document.getElementById("supInvoiceFile").addEventListener("change", async e => {
+    const file = e.target.files[0]; e.target.value = "";
+    if(!file) return;
+    const btn = document.getElementById("supInvoiceBtn");
+    btn.disabled = true; supStatus("Читаю счёт…", "");
+    try{
+      const text = await pdfText(file);
+      const res = await api("parseSupplierInvoice", {text});
+      receiptEditor.fill(res.items);
+      const cm = document.getElementById("fldReceiptComment");
+      if(!cm.value.trim() || /^Счёт .* №/.test(cm.value.trim())) cm.value = res.tag;
+      const miss = res.items.filter(it => !it.code).length;
+      const head = `${res.tag}${res.date ? " от " + res.date : ""}: позиций ${res.items.length}`;
+      if(res.dup) supStatus(`⚠ По этому счёту приход уже внесён (${res.dup.date}, ${res.dup.who}). Проверь, не дубль ли.`, "bad");
+      else if(miss) supStatus(`${head}, не узнал ${miss} — выбери код у строк ниже (запомню на будущее)`, "bad");
+      else supStatus(`${head} — все узнал ✓ Проверь и нажми «Внести приход»`, "ok");
+    }catch(err){
+      supStatus("Не получилось: " + err.message, "bad");
+    }finally{ btn.disabled = false; }
+  });
 
   // ---------- Корректировка: форма ----------
   const adjType = () => (document.querySelector('input[name="adjType"]:checked') || {}).value || "shortage";
