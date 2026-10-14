@@ -2052,7 +2052,7 @@
       .map(r => { const k = kitIndex[normCode(r.key)];
         const tail = k ? `готовых ${fmtNum(availOf(r.key))} + можно собрать ${fmtNum(kitBuildable(k))} (${esc(kitPartsText(k))})` : `доступно ${fmtNum(availOf(r.key))}`;
         return `<option value="${esc(r.key)}">${r.code ? esc(r.name) + " · " : "без артикула · "}${tail}</option>`; }).join("") + Object.values(kitIndex)
-      .filter(k => !stockIndex[normCode(k.code)])
+      .filter(k => !stockIndex[normCode(k.code)] && !k.auto)
       .map(k => `<option value="${esc(k.code)}">🧩 комплект ${esc(kitPartsText(k))} · можно собрать ${fmtNum(kitBuildable(k))}</option>`).join("");
   }
 
@@ -2798,6 +2798,17 @@
     return out;
   }
   function kitOf(code){ return kitIndex[normCode(code)] || null; }
+  /** Как на сервере: «XX/компл» без строки на листе «Комплекты» = счётчик XX + его модем (если модем известен). */
+  function addAutoKits(){
+    stockRows.forEach(r => {
+      if(r.isSection || !r.key || stockGroupOf(r) !== "meter") return;
+      const m = modemFor(r.key);
+      if(!m || !stockIndex[m]) return;
+      const code = (r.code || r.key) + "/компл", k = normCode(code);
+      if(kitIndex[k]) return;
+      kitIndex[k] = {code, name: r.name + " (комплект с модемом)", parts: [{code: normCode(r.key), qty: 1}, {code: m, qty: 1}], auto: true};
+    });
+  }
   /** Модем к счётчику: сначала лист «Модемы к счётчикам», иначе из «Комплектов» (часть-счётчик + часть-модем). */
   function modemFor(code){
     const k = normCode(code);
@@ -3530,6 +3541,7 @@
       (data.modems || []).slice(1).forEach(r => { const m = normCode(r[0]); if(m) modemSheet[m] = normCode(r[1]); });
       hiddenKeys = new Set((data.hidden || []).slice(1).map(r => normCode((r[0] || "").trim() || (r[1] || "").trim())).filter(Boolean));
       kitIndex = buildKits(data.kits);
+      addAutoKits();
       shortageRows = buildShortage(data.shortage);
       salesRows = buildSales(data.sales); salesPeriods = data.salesPeriods;
       buildCatalog(data.catalog);
