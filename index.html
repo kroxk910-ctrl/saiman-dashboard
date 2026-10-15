@@ -1554,6 +1554,23 @@
   "use strict";
 
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwYuJJBxBa6Dh90eUVmXUjyrBQdnrHmZ9whWYiJ9ZduRgOp03511GOwHgB4KFo9zIOL/exec";
+  // Быстрое зеркало данных (Cloudflare Worker). Пусто — всё читаем напрямую из Google.
+  const DATA_MIRROR_URL = "https://qmt-bot.kroxk910.workers.dev";
+  const MIRROR_FRESH_MS = 20 * 60 * 1000;   // Google давно не подтверждал зеркало — не доверяем, идём в Google
+  let lastBuiltAt = 0, lastSource = "";
+  /** Данные с зеркала: {name, role, builtAt, checkedAt, data} | {badPin:true} | null (зеркало недоступно/устарело). */
+  async function mirrorData(pin){
+    if(!DATA_MIRROR_URL) return null;
+    const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 5000);
+    try{
+      const res = await fetch(DATA_MIRROR_URL + "/data", {method: "POST", headers: {"Content-Type": "text/plain;charset=utf-8"}, body: JSON.stringify({pin}), signal: ctl.signal});
+      const d = await res.json();
+      if(!d.ok) return d.badPin ? {badPin: true} : null;
+      if(!d.data || !Array.isArray(d.data.stock) || Date.now() - (d.checkedAt || 0) > MIRROR_FRESH_MS) return null;
+      return d;
+    }catch(e){ return null; }
+    finally{ clearTimeout(tm); }
+  }
   const SESSION_KEY = "qmt_dashboard_user_v2";
   const PAYLOAD_KEY = "qmt_dashboard_payload_v1";
   const LAST_KEY = "qmt_dashboard_last_v1";   // последние данные на этом компьютере — чтобы при открытии показать сразу
@@ -2850,7 +2867,15 @@
   async function loadData(){
     let data, fromNet = false;
     const t0 = performance.now();
+    let src = "google";
     if(freshPayload && Date.now() - freshPayload.at < 15000){ data = freshPayload.data; freshPayload = null; }
+    else if(DATA_MIRROR_URL && currentUser && await (async () => {
+      // сначала быстрое зеркало; если оно старее того, что уже на экране (например, после своего действия) — в Google
+      const m = await mirrorData(currentUser.pin);
+      if(!m || m.badPin || (m.builtAt || 0) < lastBuiltAt) return false;
+      data = m.data; data.builtAt = Math.max(data.builtAt || 0, m.builtAt || 0); fromNet = true; src = "mirror";
+      return true;
+    })()){ /* данные с зеркала */ }
     else if(dataPrefetch){ const p = dataPrefetch; dataPrefetch = null; try{ data = await p; fromNet = true; }catch(e){ data = await api("data", {}); fromNet = true; } }
     else try{ data = await api("data", {}); fromNet = true; }
     catch(err){
@@ -2861,7 +2886,8 @@
     if(!data || !Array.isArray(data.stock)) throw new Error("Сервер Google вернул пустой ответ — показаны прошлые данные. Нажмите «Обновить» через минуту.");
     // последний ответ — в sessionStorage этой вкладки: после перезагрузки страница покажется сразу, а свежие данные догрузятся
     try{ sessionStorage.setItem(PAYLOAD_KEY, JSON.stringify(data)); }catch(e){ /* большой ответ или приватный режим — без кэша */ }
-    if(fromNet){ lastLoadMs = performance.now() - t0; saveLast(data); }
+    if(fromNet){ lastLoadMs = performance.now() - t0; saveLast(data); lastSource = src; }
+    if(data.builtAt) lastBuiltAt = Math.max(lastBuiltAt, data.builtAt);
     const rows = v => (Array.isArray(v) ? v : []).map(r => r.map(c => String(c ?? "")));
     return {stock: rows(data.stock), pricelist: rows(data.pricelist), requests: rows(data.requests),
             receipts: rows(data.receipts), kits: rows(data.kits), shortage: rows(data.shortage),
@@ -3699,7 +3725,7 @@
       renderAll();
       notifyAll(pendingEvents); pendingEvents = [];
       document.getElementById("footTime").textContent = new Date().toLocaleTimeString("ru-RU");
-      if(lastLoadMs) document.getElementById("footSpeed").textContent = ` · ответ сервера ${(lastLoadMs / 1000).toFixed(1).replace(".", ",")} с`;
+      if(lastLoadMs) document.getElementById("footSpeed").textContent = ` · ответ сервера ${(lastLoadMs / 1000).toFixed(1).replace(".", ",")} с${lastSource === "mirror" ? " (быстрое зеркало)" : DATA_MIRROR_URL ? " (Google)" : ""}`;
       setSyncState(opsError ? "error" : "ok", opsError ? "Заявки не загрузились" : "Данные актуальны");
     }catch(err){
       console.error(err);
@@ -4502,6 +4528,17 @@
     hideMsg(loginError);
     try{
       let match = null;
+      // быстрый вход через зеркало: PIN проверяется там же, данные приходят сразу
+      const m = await mirrorData(pinBuffer);
+      if(m && !m.badPin && m.name){
+        currentUser = {name: m.name, role: m.role, roleKey: normRole(m.role), pin: pinBuffer};
+        try{ sessionStorage.setItem(SESSION_KEY, JSON.stringify(currentUser)); }catch(e){ /* ignore */ }
+        m.data.builtAt = Math.max(m.data.builtAt || 0, m.builtAt || 0);
+        freshPayload = {at: Date.now(), data: m.data};
+        pinBusy = false;
+        startApp();
+        return;
+      }
       // данные запрашиваем сразу, параллельно с проверкой PIN — не ждём два запроса подряд
       const prefetch = api("data", {pin: pinBuffer}); prefetch.catch(() => {});
       try{
