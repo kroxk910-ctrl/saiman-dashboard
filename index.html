@@ -1544,7 +1544,7 @@
 </div>
 
 <footer>
-  Данные из Google Sheets · автообновление каждую минуту · последнее обновление: <span id="footTime">—</span>
+  Данные из Google Sheets · автообновление каждую минуту · последнее обновление: <span id="footTime">—</span><span id="footSpeed"></span>
 </footer>
 
 </div><!-- /#appRoot -->
@@ -1556,6 +1556,15 @@
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwYuJJBxBa6Dh90eUVmXUjyrBQdnrHmZ9whWYiJ9ZduRgOp03511GOwHgB4KFo9zIOL/exec";
   const SESSION_KEY = "qmt_dashboard_user_v2";
   const PAYLOAD_KEY = "qmt_dashboard_payload_v1";
+  const LAST_KEY = "qmt_dashboard_last_v1";   // последние данные на этом компьютере — чтобы при открытии показать сразу
+  function saveLast(data){ try{ if(currentUser) localStorage.setItem(LAST_KEY, JSON.stringify({user: currentUser.name, at: Date.now(), data})); }catch(e){ /* большой ответ / приватный режим */ } }
+  function readLast(){
+    try{ const v = JSON.parse(localStorage.getItem(LAST_KEY) || "null");
+      return v && currentUser && v.user === currentUser.name && Date.now() - v.at < 3 * 24 * 3600 * 1000 && v.data && Array.isArray(v.data.stock) ? v.data : null;
+    }catch(e){ return null; }
+  }
+  let dataPrefetch = null;    // запрос данных, запущенный параллельно с проверкой PIN
+  let lastLoadMs = 0;
 
   const ST_NEW = "Новая", ST_PREP = "В подготовке", ST_READY = "Готова к отгрузке",
         ST_SHIPPED = "Отгружена", ST_CANCELLED = "Отменена";
@@ -2817,9 +2826,11 @@
 
   /** Данные для дашборда одним запросом к Apps Script (вместо чтения таблицы по открытой ссылке). */
   async function loadData(){
-    let data;
+    let data, fromNet = false;
+    const t0 = performance.now();
     if(freshPayload && Date.now() - freshPayload.at < 15000){ data = freshPayload.data; freshPayload = null; }
-    else try{ data = await api("data", {}); }
+    else if(dataPrefetch){ const p = dataPrefetch; dataPrefetch = null; try{ data = await p; fromNet = true; }catch(e){ data = await api("data", {}); fromNet = true; } }
+    else try{ data = await api("data", {}); fromNet = true; }
     catch(err){
       if(err.badPin){ forceRelogin(); throw new Error("PIN изменился — войдите заново"); }
       if(/Неизвестное действие/.test(err.message)) throw new Error("Apps Script не обновлён: разверни новую версию скрипта");
@@ -2827,6 +2838,7 @@
     }
     // последний ответ — в sessionStorage этой вкладки: после перезагрузки страница покажется сразу, а свежие данные догрузятся
     try{ sessionStorage.setItem(PAYLOAD_KEY, JSON.stringify(data)); }catch(e){ /* большой ответ или приватный режим — без кэша */ }
+    if(fromNet){ lastLoadMs = performance.now() - t0; saveLast(data); }
     const rows = v => (Array.isArray(v) ? v : []).map(r => r.map(c => String(c ?? "")));
     return {stock: rows(data.stock), pricelist: rows(data.pricelist), requests: rows(data.requests),
             receipts: rows(data.receipts), kits: rows(data.kits), shortage: rows(data.shortage),
@@ -2835,7 +2847,7 @@
             revisions: rows(data.revisions), revisionCounts: rows(data.revisionCounts)};
   }
   function forceRelogin(){
-    try{ sessionStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(PAYLOAD_KEY); }catch(e){ /* ignore */ }
+    try{ sessionStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(PAYLOAD_KEY); localStorage.removeItem(LAST_KEY); }catch(e){ /* ignore */ }
     setTimeout(() => location.reload(), 1500);
   }
 
@@ -3664,6 +3676,7 @@
       renderAll();
       notifyAll(pendingEvents); pendingEvents = [];
       document.getElementById("footTime").textContent = new Date().toLocaleTimeString("ru-RU");
+      if(lastLoadMs) document.getElementById("footSpeed").textContent = ` · ответ сервера ${(lastLoadMs / 1000).toFixed(1).replace(".", ",")} с`;
       setSyncState(opsError ? "error" : "ok", opsError ? "Заявки не загрузились" : "Данные актуальны");
     }catch(err){
       console.error(err);
@@ -4003,7 +4016,7 @@
         const res = await cfg.send();
         showMsg(ok, cfg.successText(res));
         submit.textContent = "Готово ✓";
-        setTimeout(()=>{ closeOverlay(overlay); syncAll(true); }, 900);
+        setTimeout(()=>{ closeOverlay(overlay); syncAll(true); }, 500);
       }catch(e){
         showMsg(err, e.message);
         submit.disabled = false; submit.textContent = labelOf();
@@ -4437,6 +4450,7 @@
     document.getElementById("uploadStockBtn").hidden = !isAdmin();
     let cachedData = null;
     if(!freshPayload){ try{ cachedData = JSON.parse(sessionStorage.getItem(PAYLOAD_KEY) || "null"); }catch(e){ cachedData = null; } }
+    if(!freshPayload && !(cachedData && Array.isArray(cachedData.stock))) cachedData = readLast();   // новое открытие — последние данные с этого компьютера
     if(cachedData && Array.isArray(cachedData.stock)){
       freshPayload = {at: Date.now(), data: cachedData};
       syncAll(false);           // мгновенно — из сохранённого ответа
@@ -4448,7 +4462,7 @@
 
   document.getElementById("logoutBtnM").addEventListener("click", ()=> document.getElementById("logoutBtn").click());
   document.getElementById("logoutBtn").addEventListener("click", ()=>{
-    try{ sessionStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(PAYLOAD_KEY); }catch(e){ /* ignore */ }
+    try{ sessionStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(PAYLOAD_KEY); localStorage.removeItem(LAST_KEY); }catch(e){ /* ignore */ }
     location.reload();
   });
 
@@ -4465,6 +4479,8 @@
     hideMsg(loginError);
     try{
       let match = null;
+      // данные запрашиваем сразу, параллельно с проверкой PIN — не ждём два запроса подряд
+      const prefetch = api("data", {pin: pinBuffer}); prefetch.catch(() => {});
       try{
         const r = await api("login", {pin: pinBuffer});
         match = {name: r.name, role: r.role};
@@ -4478,6 +4494,7 @@
         return;
       }
       currentUser = {name: match.name, role: match.role, roleKey: normRole(match.role), pin: pinBuffer};
+      if(!freshPayload) dataPrefetch = prefetch;
       try{ sessionStorage.setItem(SESSION_KEY, JSON.stringify(currentUser)); }catch(e){ /* ignore */ }
       pinBusy = false;
       startApp();
