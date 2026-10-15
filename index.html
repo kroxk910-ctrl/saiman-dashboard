@@ -2873,7 +2873,7 @@
       // сначала быстрое зеркало; если оно старее того, что уже на экране (например, после своего действия) — в Google
       const m = await mirrorData(currentUser.pin);
       if(!m || m.badPin || (m.builtAt || 0) < lastBuiltAt) return false;
-      data = m.data; data.builtAt = Math.max(data.builtAt || 0, m.builtAt || 0); fromNet = true; src = "mirror";
+      data = m.data; data.contentAt = Math.max(data.contentAt || 0, m.builtAt || 0); fromNet = true; src = "mirror";
       return true;
     })()){ /* данные с зеркала */ }
     else if(dataPrefetch){ const p = dataPrefetch; dataPrefetch = null; try{ data = await p; fromNet = true; }catch(e){ data = await api("data", {}); fromNet = true; } }
@@ -2887,7 +2887,7 @@
     // последний ответ — в sessionStorage этой вкладки: после перезагрузки страница покажется сразу, а свежие данные догрузятся
     try{ sessionStorage.setItem(PAYLOAD_KEY, JSON.stringify(data)); }catch(e){ /* большой ответ или приватный режим — без кэша */ }
     if(fromNet){ lastLoadMs = performance.now() - t0; saveLast(data); lastSource = src; }
-    if(data.builtAt) lastBuiltAt = Math.max(lastBuiltAt, data.builtAt);
+    if(data.contentAt) lastBuiltAt = Math.max(lastBuiltAt, data.contentAt);   // когда данные реально менялись (не время пересборки)
     const rows = v => (Array.isArray(v) ? v : []).map(r => r.map(c => String(c ?? "")));
     return {stock: rows(data.stock), pricelist: rows(data.pricelist), requests: rows(data.requests),
             receipts: rows(data.receipts), kits: rows(data.kits), shortage: rows(data.shortage),
@@ -4533,7 +4533,7 @@
       if(m && !m.badPin && m.name){
         currentUser = {name: m.name, role: m.role, roleKey: normRole(m.role), pin: pinBuffer};
         try{ sessionStorage.setItem(SESSION_KEY, JSON.stringify(currentUser)); }catch(e){ /* ignore */ }
-        m.data.builtAt = Math.max(m.data.builtAt || 0, m.builtAt || 0);
+        m.data.contentAt = Math.max(m.data.contentAt || 0, m.builtAt || 0);
         freshPayload = {at: Date.now(), data: m.data};
         pinBusy = false;
         startApp();
