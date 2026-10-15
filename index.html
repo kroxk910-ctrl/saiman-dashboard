@@ -2095,8 +2095,9 @@
         .map(c => `<option value="${esc(c.name)}">из 1С · без артикула</option>`).join("");
     document.getElementById("requestCodes").innerHTML = ordered
       .map(r => { const k = kitIndex[normCode(r.key)];
-        const tail = k ? `готовых ${fmtNum(availOf(r.key))} + можно собрать ${fmtNum(kitBuildable(k))} (${esc(kitPartsText(k))})` : `доступно ${fmtNum(availOf(r.key))}`;
-        return `<option value="${esc(r.key)}">${r.code ? esc(r.name) + " · " : "без артикула · "}${tail}</option>`; }).join("") + Object.values(kitIndex)
+        // комплект, который бывает и готовым в остатках, — так же явно, как остальные комплекты
+        if(k) return `<option value="${esc(r.key)}">🧩 комплект ${esc(kitPartsText(k))} · готовых ${fmtNum(Math.max(0, availOf(r.key)))} + можно собрать ${fmtNum(kitBuildable(k))}</option>`;
+        return `<option value="${esc(r.key)}">${r.code ? esc(r.name) + " · " : "без артикула · "}доступно ${fmtNum(availOf(r.key))}</option>`; }).join("") + Object.values(kitIndex)
       .filter(k => !stockIndex[normCode(k.code)] && !k.auto)
       .map(k => `<option value="${esc(k.code)}">🧩 комплект ${esc(kitPartsText(k))} · можно собрать ${fmtNum(kitBuildable(k))}</option>`).join("");
   }
@@ -3811,7 +3812,7 @@
       const kit = mode === "request" ? kitOf(code) : null;
       if(kit){
         const ready = kitReady(kit), build = kitBuildable(kit);
-        const head = `🧩 Комплект: ${kitPartsText(kit)} · ` + (stockIndex[code] ? `готовых ${fmtNum(ready)} + можно собрать ${fmtNum(build)}` : `можно собрать ${fmtNum(build)}`);
+        const head = `🧩 Комплект: ${kitPartsText(kit)} · ` + (stockIndex[code] ? `готовых ${fmtNum(Math.max(0, ready))} + можно собрать ${fmtNum(build)}` : `можно собрать ${fmtNum(build)}`);
         const need = expandToParts(collect().filter(it => /^\d+$/.test(it.qty)).map(it => ({code: it.code, qty: Number(it.qty)})));
         const missing = kit.parts.filter(p => !stockIndex[p.code] && need[p.code] > 0).map(p => p.code);
         if(missing.length){ h.textContent = `${head} · в остатках нет ${missing.join(", ")}`; h.classList.add("bad"); return; }
@@ -3824,6 +3825,32 @@
           h.classList.add(ready + build > 0 ? "good" : "bad");
         }
         return;
+      }
+      // «XX/компл», а собрать нельзя: к счётчику XX не указан модем — объясняем и (админу) даём указать прямо здесь
+      if(mode === "request" && !kit){
+        const km = block.querySelector(".item-code").value.trim().match(/^(.+?)\s*\/\s*[кk][оo][мm]пл\.?$/i);
+        const meter = km ? normCode(km[1]) : "";
+        if(meter && isMeterCode(meter)){
+          const ml = stockIndex[meter].label || meter;
+          const ready = s ? availOf(code) : 0;
+          const why = meter in modemSheet ? `у ${esc(ml)} указано «без модема»` : `к ${esc(ml)} не указан модем`;
+          h.innerHTML = `🧩 Комплект ${esc(ml)} + модем: ${why} — собрать нельзя${s ? `, готовых ${fmtNum(ready)}` : ""}.` + (isAdmin()
+            ? ` <select class="kit-modem-pick"><option value="">модем к ${esc(ml)}…</option>${modemsList().map(x => `<option value="${esc(x.key)}">${esc(x.code || x.name)} · ${esc(x.name)}</option>`).join("")}</select>`
+            : ` Попросите Александра указать модем к ${esc(ml)} в карточке счётчика.`);
+          h.classList.add(ready > 0 ? "good" : "bad");
+          const sel = h.querySelector(".kit-modem-pick");
+          if(sel) sel.addEventListener("change", async () => {
+            if(!sel.value) return;
+            sel.disabled = true;
+            try{
+              await api("setMeterModem", {meter, modem: sel.value});
+              modemSheet[meter] = normCode(sel.value);
+              addAutoKits(); refresh();
+              syncAll(true);
+            }catch(err){ sel.disabled = false; alert("Не получилось: " + err.message); }
+          });
+          return;
+        }
       }
       const nameInp = block.querySelector(".item-name");
       if(nameInp) nameInp.hidden = !!s;
@@ -3841,7 +3868,13 @@
         block.dataset.noCode = "";
         h.textContent = "Такой позиции нет в остатках и в 1С — впишите наименование, при приходе она добавится в остатки"; h.classList.add("bad"); return;
       }
-      if(!s){ h.textContent = "Такого кода нет в остатках"; h.classList.add("bad"); return; }
+      if(!s){
+        // недописанный код («IA/») — не пугаем красным, подсказываем выбрать из списка
+        const partial = Object.keys(stockIndex).concat(Object.keys(kitIndex)).some(k => k !== code && k.startsWith(code));
+        h.textContent = partial ? "Допишите код или выберите из списка" : "Такого кода нет в остатках";
+        if(!partial) h.classList.add("bad");
+        return;
+      }
       const a = availOf(code);
       if(mode === "request"){
         // учитываем и эту же деталь внутри выбранных комплектов
