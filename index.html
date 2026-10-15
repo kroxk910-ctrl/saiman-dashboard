@@ -2275,18 +2275,40 @@
   // Свежие данные, пришедшие вместе с ответом (вход, любое действие) — следующему syncAll не нужен отдельный запрос
   let freshPayload = null;
   const READ_ACTIONS = ["login", "data", "telegramStatus", "parseSupplierInvoice"];
-  async function api(action, payload){
-    const body = Object.assign({action, pin: currentUser ? currentUser.pin : ""}, payload);
-    if(!READ_ACTIONS.includes(action)) body.withData = true;
-    const res = await fetch(APPS_SCRIPT_URL, {
-      method: "POST",
-      headers: {"Content-Type": "text/plain;charset=utf-8"},
-      body: JSON.stringify(body)
-    });
+  // Google иногда сбоит: отдаёт свою HTML-страницу ошибки или теряет тело запроса (тогда отвечает как на простое
+  // открытие ссылки — «Сервис работает»). Чтение в таких случаях тихо повторяем; запись — только если запрос
+  // точно не дошёл до скрипта (второй случай), иначе сообщаем, чтобы не задвоить.
+  const googleHiccup = (msg, retry) => { const e = new Error(msg); e.hiccup = true; e.retry = retry; return e; };
+  async function apiOnce(action, body){
+    let res;
+    try{
+      res = await fetch(APPS_SCRIPT_URL, { method: "POST", headers: {"Content-Type": "text/plain;charset=utf-8"}, body: JSON.stringify(body) });
+    }catch(err){ throw googleHiccup("нет связи с сервером Google — проверьте интернет", true); }
     const text = await res.text();
     let data;
     try{ data = JSON.parse(text); }
-    catch{ throw new Error("Сервер вернул непонятный ответ: " + text.slice(0,120)); }
+    catch{ throw googleHiccup("сервер Google временно не ответил", READ_ACTIONS.includes(action)); }
+    if(data && data.ok && !("name" in data) && !Array.isArray(data.stock) && /Сервис работает/.test(data.message || ""))
+      throw googleHiccup("запрос не дошёл до сервера Google", true);
+    return data;
+  }
+  async function api(action, payload){
+    const body = Object.assign({action, pin: currentUser ? currentUser.pin : ""}, payload);
+    if(!READ_ACTIONS.includes(action)) body.withData = true;
+    let data;
+    for(let attempt = 0; ; attempt++){
+      try{ data = await apiOnce(action, body); break; }
+      catch(err){
+        if(!err.hiccup) throw err;
+        if(!err.retry || attempt >= 2){
+          throw new Error(READ_ACTIONS.includes(action) || err.retry
+            ? "Сервер Google сейчас не отвечает (" + err.message + "). Подождите минуту и нажмите «Обновить»."
+            : "Сервер Google ответил с ошибкой — неизвестно, сохранилось ли. Нажмите «Обновить» и проверьте, прежде чем повторять.");
+        }
+        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+      }
+    }
+    if(action === "login" && data.ok && !data.name) throw new Error("Сервер Google ответил не полностью — попробуйте ещё раз");
     if(!data.ok){ const e = new Error(data.error || "Неизвестная ошибка"); e.badPin = !!data.badPin; e.dupIssued = data.dupIssued || 0; throw e; }
     if(action === "login" && Array.isArray(data.stock)) freshPayload = {at: Date.now(), data};
     else if(data.payload && Array.isArray(data.payload.stock)) freshPayload = {at: Date.now(), data: data.payload};
@@ -2836,6 +2858,7 @@
       if(/Неизвестное действие/.test(err.message)) throw new Error("Apps Script не обновлён: разверни новую версию скрипта");
       throw err;
     }
+    if(!data || !Array.isArray(data.stock)) throw new Error("Сервер Google вернул пустой ответ — показаны прошлые данные. Нажмите «Обновить» через минуту.");
     // последний ответ — в sessionStorage этой вкладки: после перезагрузки страница покажется сразу, а свежие данные догрузятся
     try{ sessionStorage.setItem(PAYLOAD_KEY, JSON.stringify(data)); }catch(e){ /* большой ответ или приватный режим — без кэша */ }
     if(fromNet){ lastLoadMs = performance.now() - t0; saveLast(data); }
