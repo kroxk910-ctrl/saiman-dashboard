@@ -752,6 +752,16 @@
   .detail-value.plus{color:var(--ok);}
   .detail-value.minus{color:var(--wait);}
 
+  .docs1c{margin:0 0 18px; border:1px solid var(--wait); border-radius:9px; background:var(--panel); overflow:hidden;}
+  .docs1c-head{padding:10px 14px; background:var(--wait-bg); color:var(--ink); font-weight:600; font-size:15px;}
+  .docs1c-head .sub{font-weight:400; color:var(--ink-dim); font-size:13px;}
+  .doc1c{padding:12px 14px; border-top:1px solid var(--line); display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap;}
+  .doc1c-main{flex:1 1 320px; min-width:0;}
+  .doc1c-title{font-weight:700; color:var(--ink);}
+  .doc1c-items{font-size:14px; color:var(--ink-dim); margin-top:4px;}
+  .doc1c-items b{color:var(--ink);}
+  .doc1c-cand{font-size:13px; color:var(--ink-dim); margin-top:6px;}
+  .doc1c-acts{display:flex; gap:6px; flex-wrap:wrap; align-items:center;}
   .req-edit{margin-left:6px; border:1px solid var(--line); background:var(--panel); border-radius:6px; padding:2px 6px; font-size:13px; cursor:pointer; vertical-align:middle;}
   .req-edit:hover{border-color:var(--accent);}
   .edit-line{display:grid; grid-template-columns:1fr 110px; gap:10px; align-items:center; padding:10px 0; border-bottom:1px solid var(--line);}
@@ -1194,6 +1204,7 @@
 
   <!-- ============ UNREALIZED VIEW (warehouse) ============ -->
   <section class="view" id="view-unrealized">
+    <div id="docs1cHost"></div>
     <p class="view-note">Заявки, по которым менеджер указал, что реализация в 1С <b>не проведена</b>. Когда реализацию провели — нажми «Реализация проведена», и заявка уйдёт из списка.</p>
     <div class="toolbar">
       <div class="search-box"><input type="text" id="unrealizedSearch" placeholder="Поиск по №, коду, менеджеру…"></div>
@@ -1418,6 +1429,26 @@
     <div class="modal-actions">
       <button class="modal-btn cancel" data-close>Отмена</button>
       <button class="modal-btn submit" id="stockUpSubmit" disabled>Загрузить</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="docShipModalOverlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title" id="docShipTitle">Записать отгрузку по 1С</span>
+      <button class="modal-close" data-close>×</button>
+    </div>
+    <p class="modal-note">Реализация проведена в 1С, а заявки в дашборде нет. Укажите, чья это отгрузка и кому — она запишется как отгрузка со склада с проведённой реализацией (из остатков второй раз не вычитается).</p>
+    <div class="form-field"><label>Позиции</label><div id="docShipItems" class="doc1c-items"></div></div>
+    <div class="form-field"><label>Менеджер <span class="required">*</span></label><select id="docShipManager"></select></div>
+    <div class="form-field"><label>Кому отгрузили (клиент) <span class="required">*</span></label><input type="text" id="docShipClient" placeholder="Например: ТОО Альфа"></div>
+    <div class="form-field"><label>Комментарий</label><input type="text" id="docShipComment" placeholder="Необязательно"></div>
+    <div class="form-error" id="docShipError"></div>
+    <div class="form-success" id="docShipSuccess"></div>
+    <div class="modal-actions">
+      <button class="modal-btn cancel" data-close>Отмена</button>
+      <button class="modal-btn submit" id="docShipSubmit">Записать отгрузку</button>
     </div>
   </div>
 </div>
@@ -1696,6 +1727,7 @@
   let requestRows = [];    // одна строка таблицы = одна позиция
   let requests = [];       // сгруппировано по № заявки
   let receiptRows = [];
+  let docs1c = [];          // реализации из ведомости 1С, для которых нет заявки — ждут решения склада
   let peopleList = [];     // имена сотрудников (без PIN) — кому склад выдал без заявки
   let adjRows = [];        // лист «Корректировки»
   let hiddenKeys = new Set();   // лист «Скрытые позиции» — не на продажу
@@ -2409,11 +2441,71 @@
   // ---------- Render: UNREALIZED (warehouse) ----------
   const isUnrealized = r => r.realized === "Нет" && !r.realizedAt && r.status !== ST_CANCELLED;
 
+  // ---------- Реализации из 1С без заявки (ведомость) ----------
+  function renderDocs1c(){
+    const host = document.getElementById("docs1cHost");
+    if(!isWarehouse() || !docs1c.length){ host.innerHTML = ""; return; }
+    host.innerHTML = `<div class="docs1c"><div class="docs1c-head">📦 Отгружено по 1С без заявки: ${docs1c.length}
+        <div class="sub">В 1С проведена реализация, а заявки в дашборде нет. Запишите, чья это отгрузка, или укажите заявку, если она есть.</div></div>` +
+      docs1c.map((d, i) => {
+        const items = d.items.map(it => `<b>${esc(it.code || it.name)}</b> × ${fmtNum(it.qty)}${it.code && it.name ? ` <span class="dash">${esc(it.name)}</span>` : ""}`).join("<br>");
+        const cand = String(d.cand || "").split(",").filter(Boolean);
+        return `<div class="doc1c"><div class="doc1c-main">
+            <div class="doc1c-title">Реализация №${esc(d.short)} от ${esc(d.date)}</div>
+            <div class="doc1c-items">${items}</div>
+            ${cand.length ? `<div class="doc1c-cand">Похоже на заявку: ${cand.map(id => `<button type="button" class="adj-btn" data-doclink="${i}" data-id="${esc(id)}">это №${esc(id)}</button>`).join(" ")}</div>` : ""}
+          </div><div class="doc1c-acts">
+            <button type="button" class="ok-btn" data-docship="${i}">Записать отгрузку</button>
+            <button type="button" class="adj-btn" data-docskip="${i}" title="Не отгрузка со склада (например, служебная) — убрать из списка">Пропустить</button>
+          </div></div>`;
+      }).join("") + `</div>`;
+    host.querySelectorAll("[data-docship]").forEach(b => b.addEventListener("click", () => openDocShip(docs1c[Number(b.dataset.docship)])));
+    host.querySelectorAll("[data-doclink]").forEach(b => b.addEventListener("click", () => resolveDocAction(docs1c[Number(b.dataset.doclink)], {id: Number(b.dataset.id)}, b)));
+    host.querySelectorAll("[data-docskip]").forEach(b => b.addEventListener("click", () => {
+      const d = docs1c[Number(b.dataset.docskip)];
+      if(confirm(`Убрать реализацию №${d.short} из списка, не записывая отгрузку?`)) resolveDocAction(d, {skip: true}, b);
+    }));
+  }
+  async function resolveDocAction(d, extra, btn){
+    btn.disabled = true;
+    try{ await api("resolveDoc", Object.assign({key: d.key}, extra)); await syncAll(true); }
+    catch(err){ btn.disabled = false; alert("Не получилось: " + err.message); }
+  }
+  let docShipDoc = null;
+  function openDocShip(d){
+    docShipDoc = d;
+    document.getElementById("docShipTitle").textContent = `Реализация №${d.short} от ${d.date}`;
+    document.getElementById("docShipItems").innerHTML = d.items.map(it => `<b>${esc(it.code || it.name)}</b> × ${fmtNum(it.qty)}`).join(", ");
+    const sel = document.getElementById("docShipManager");
+    const ppl = peopleList.slice().sort((a, b) => (a.role === "Менеджер" ? 0 : 1) - (b.role === "Менеджер" ? 0 : 1) || a.name.localeCompare(b.name, "ru"));
+    sel.innerHTML = `<option value="">— выберите —</option>` + ppl.map(p => `<option value="${esc(p.name)}">${esc(p.name)}${p.role !== "Менеджер" ? " · " + esc(p.role.toLowerCase()) : ""}</option>`).join("");
+    document.getElementById("docShipClient").value = ""; document.getElementById("docShipComment").value = "";
+    hideMsg(document.getElementById("docShipError")); hideMsg(document.getElementById("docShipSuccess"));
+    const sub = document.getElementById("docShipSubmit"); sub.disabled = false; sub.textContent = "Записать отгрузку";
+    openOverlay(document.getElementById("docShipModalOverlay"));
+  }
+  document.getElementById("docShipSubmit").addEventListener("click", async () => {
+    const d = docShipDoc; if(!d) return;
+    const err = document.getElementById("docShipError"), ok = document.getElementById("docShipSuccess"), sub = document.getElementById("docShipSubmit");
+    const manager = document.getElementById("docShipManager").value, client = document.getElementById("docShipClient").value.trim();
+    hideMsg(err);
+    if(!manager){ showMsg(err, "Выберите менеджера"); return; }
+    if(!client){ showMsg(err, "Укажите, кому отгрузили"); return; }
+    sub.disabled = true; sub.textContent = "Записываю…";
+    try{
+      const res = await api("recordDocShipment", {key: d.key, manager, client, comment: document.getElementById("docShipComment").value.trim()});
+      showMsg(ok, `Записано: заявка №${res.id}. Обновляю данные…`); sub.textContent = "Готово ✓";
+      setTimeout(() => { closeOverlay(document.getElementById("docShipModalOverlay")); syncAll(true); }, 600);
+    }catch(e){ showMsg(err, e.message); sub.disabled = false; sub.textContent = "Записать отгрузку"; }
+  });
+
   function renderUnrealized(){
+    renderDocs1c();
     const source = requests.filter(isUnrealized);
     const badge = document.getElementById("unrealizedCount");
-    badge.textContent = source.length;
-    badge.classList.toggle("alert", source.length > 0);
+    const waiting = source.length + (isWarehouse() ? docs1c.length : 0);
+    badge.textContent = waiting;
+    badge.classList.toggle("alert", waiting > 0);
 
     let rows = source.slice().sort((a,b)=> a.id - b.id);
     const term = (document.getElementById("unrealizedSearch").value||"").trim().toLowerCase();
@@ -2893,7 +2985,8 @@
             receipts: rows(data.receipts), kits: rows(data.kits), shortage: rows(data.shortage),
             sales: rows(data.sales), salesPeriods: Array.isArray(data.salesPeriods) ? data.salesPeriods : [], catalog: rows(data.catalog),
             people: Array.isArray(data.people) ? data.people : [], adjustments: rows(data.adjustments), hidden: rows(data.hidden), modems: rows(data.modems),
-            revisions: rows(data.revisions), revisionCounts: rows(data.revisionCounts)};
+            revisions: rows(data.revisions), revisionCounts: rows(data.revisionCounts),
+            docs1c: Array.isArray(data.docs1c) ? data.docs1c : []};
   }
   function forceRelogin(){
     try{ sessionStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(PAYLOAD_KEY); localStorage.removeItem(LAST_KEY); }catch(e){ /* ignore */ }
@@ -3709,6 +3802,7 @@
       pendingEvents = detectRequestEvents(requests);
       receiptRows = buildReceipts(data.receipts);
       peopleList = data.people || [];
+      docs1c = data.docs1c || [];
       adjRows = buildAdjustments(data.adjustments);
       revisions = (data.revisions || []).slice(1).map(r => ({id: parseNum(r[0]), started: r[1], status: r[2], by: r[3], finished: r[4], finishedBy: r[5],
         counted: parseNum(r[6]), mismatches: parseNum(r[7]), summary: r[8]})).filter(r => r.id);
