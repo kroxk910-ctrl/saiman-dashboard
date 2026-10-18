@@ -762,6 +762,10 @@
   .doc1c-items b{color:var(--ink);}
   .doc1c-cand{font-size:13px; color:var(--ink-dim); margin-top:6px;}
   .doc1c-acts{display:flex; gap:6px; flex-wrap:wrap; align-items:center;}
+  .autoreal{margin:0 0 18px; border:1px solid var(--line); border-radius:9px; background:var(--panel);}
+  .autoreal > summary{padding:10px 14px; cursor:pointer; font-weight:600; font-size:15px; color:var(--ink);}
+  .autoreal > summary .sub{font-weight:400; color:var(--ink-dim); font-size:13px;}
+  .auto-tag{display:inline-block; margin-left:4px; padding:0 6px; border-radius:5px; background:var(--wait-bg); color:var(--ink); font-size:12px; font-weight:600;}
   .req-edit{margin-left:6px; border:1px solid var(--line); background:var(--panel); border-radius:6px; padding:2px 6px; font-size:13px; cursor:pointer; vertical-align:middle;}
   .req-edit:hover{border-color:var(--accent);}
   .edit-line{display:grid; grid-template-columns:1fr 110px; gap:10px; align-items:center; padding:10px 0; border-bottom:1px solid var(--line);}
@@ -1205,6 +1209,7 @@
   <!-- ============ UNREALIZED VIEW (warehouse) ============ -->
   <section class="view" id="view-unrealized">
     <div id="docs1cHost"></div>
+    <div id="autoRealHost"></div>
     <p class="view-note">Заявки, по которым менеджер указал, что реализация в 1С <b>не проведена</b>. Когда реализацию провели — нажми «Реализация проведена», и заявка уйдёт из списка.</p>
     <div class="toolbar">
       <div class="search-box"><input type="text" id="unrealizedSearch" placeholder="Поиск по №, коду, менеджеру…"></div>
@@ -2255,7 +2260,7 @@
       html += `<tr class="${req.status === ST_CANCELLED ? 'old-row' : ''}">
         <td class="req-id">№${req.id}${canEditReq(req) ? `<button type="button" class="req-edit" data-edit="${req.id}" title="Изменить количество">✏️</button>` : ""}</td>
         <td><div class="req-items">${req.lines.map(lineHtml).join("")}</div></td>
-        <td>${badge}${isUnrealized(req) ? `<span class="real-tag">без реализации</span>` : ""}${meta ? `<div class="req-meta">${meta}</div>` : ""}${isLocked(req) ? `<div class="req-meta">🔒 изменить или удалить можно после реализации</div>` : ""}${req.realized === "Нет" && req.realizedAt ? `<div class="req-meta">реализация проведена ${esc(req.realizedAt)}</div>` : ""}</td>
+        <td>${badge}${isUnrealized(req) ? `<span class="real-tag">без реализации</span>` : ""}${meta ? `<div class="req-meta">${meta}</div>` : ""}${isLocked(req) ? `<div class="req-meta">🔒 изменить или удалить можно после реализации</div>` : ""}${req.realized === "Нет" && req.realizedAt ? `<div class="req-meta">реализация проведена ${esc(req.realizedAt)}${isAutoReal(req) ? ` <span class="auto-tag" title="Отметил сам дашборд по ведомости 1С — проверьте на вкладке «Без реализации»">🤖 по 1С</span>` : ""}</div>` : ""}</td>
         <td>${esc(req.manager)}</td>
         <td>${esc(req.date)}</td>
         <td>${esc(req.comment) || `<span class="dash">—</span>`}</td>
@@ -2499,8 +2504,39 @@
     }catch(e){ showMsg(err, e.message); sub.disabled = false; sub.textContent = "Записать отгрузку"; }
   });
 
+  // ---------- Отмечено по 1С автоматически (последние 7 дней) ----------
+  function isAutoReal(r){ return r.realizedBy === "1С (ведомость)" && !!r.realizedAt; }
+  function renderAutoReal(){
+    const host = document.getElementById("autoRealHost");
+    const list = isWarehouse() ? requests.filter(r => isAutoReal(r) && r.status !== ST_CANCELLED &&
+      daysBetween(dateKey(r.realizedAt), todayKey()) <= 7).sort((a, b) => b.id - a.id) : [];
+    if(!list.length){ host.innerHTML = ""; return; }
+    const open = (() => { try { return localStorage.getItem("qmt_autoreal_open") === "1"; } catch(e){ return false; } })();
+    host.innerHTML = `<details class="autoreal"${open ? " open" : ""}><summary>🤖 Отмечено по 1С автоматически за 7 дней: ${list.length}
+        <div class="sub">Дашборд сам нашёл эти реализации в ведомости 1С и отметил «реализация проведена». Если пара неверная — снимите отметку.</div></summary>` +
+      list.map(r => {
+        const m = String(r.comment || "").match(/Накладная №\s*([\d-]+)/);
+        return `<div class="doc1c"><div class="doc1c-main">
+            <div class="doc1c-title">№${r.id} · ${esc(r.manager)}${m ? ` → накладная №${esc(m[1])}` : ""}</div>
+            <div class="doc1c-items">${esc(linesText(r))}${r.comment ? `<br><span class="dash">${esc(r.comment)}</span>` : ""}</div>
+            <div class="doc1c-cand">отмечено ${esc(r.realizedAt)}</div>
+          </div><div class="doc1c-acts">
+            <button type="button" class="adj-btn" data-unauto="${r.id}">Неверно — снять</button>
+          </div></div>`;
+      }).join("") + `</details>`;
+    host.querySelector("details").addEventListener("toggle", e => { try { localStorage.setItem("qmt_autoreal_open", e.target.open ? "1" : "0"); } catch(err){} });
+    host.querySelectorAll("[data-unauto]").forEach(b => b.addEventListener("click", async () => {
+      const id = Number(b.dataset.unauto);
+      if(!confirm(`Снять отметку «реализация проведена» с заявки №${id}?\nЗаявка вернётся в «Без реализации», а документ 1С — в «Отгружено по 1С без заявки».`)) return;
+      b.disabled = true;
+      try{ await api("unmarkAuto", {id}); await syncAll(true); }
+      catch(err){ b.disabled = false; alert("Не получилось: " + err.message); }
+    }));
+  }
+
   function renderUnrealized(){
     renderDocs1c();
+    renderAutoReal();
     const source = requests.filter(isUnrealized);
     const badge = document.getElementById("unrealizedCount");
     const waiting = source.length + (isWarehouse() ? docs1c.length : 0);
