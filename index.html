@@ -762,6 +762,17 @@
   .doc1c-items b{color:var(--ink);}
   .doc1c-cand{font-size:13px; color:var(--ink-dim); margin-top:6px;}
   .doc1c-acts{display:flex; gap:6px; flex-wrap:wrap; align-items:center;}
+  .sv-card{margin:0 0 18px; border:1px solid var(--line); border-radius:9px; background:var(--panel); padding:12px 14px;}
+  .sv-head{display:flex; gap:14px; justify-content:space-between; align-items:flex-start; flex-wrap:wrap;}
+  .sv-title{font-weight:600; font-size:15px; color:var(--ink);}
+  .sv-sub{font-weight:400; font-size:13px; color:var(--ink-dim);}
+  .sv-total{font-family:var(--mono); font-size:28px; font-weight:700; color:var(--accent); margin-top:6px;}
+  .sv-meta{font-size:13px; color:var(--ink-dim); margin-top:2px;}
+  .sv-acts{display:flex; gap:6px; flex-wrap:wrap;}
+  .sv-status{font-size:13px; margin-top:6px; color:var(--ink-dim);}
+  .sv-status.bad{color:var(--bad, #c0392b);} .sv-status.ok{color:var(--ok);}
+  .sv-details{margin-top:10px;} .sv-details > summary{cursor:pointer; font-weight:600; color:var(--ink);}
+  .sv-details table td.num, .sv-details table th.num{text-align:right; white-space:nowrap;}
   .autoreal{margin:0 0 18px; border:1px solid var(--line); border-radius:9px; background:var(--panel);}
   .autoreal > summary{padding:10px 14px; cursor:pointer; font-weight:600; font-size:15px; color:var(--ink);}
   .autoreal > summary .sub{font-weight:400; color:var(--ink-dim); font-size:13px;}
@@ -1282,6 +1293,23 @@
 
   <!-- ============ ANALYTICS VIEW (только админ) ============ -->
   <section class="view" id="view-analytics">
+    <div class="sv-card" id="stockValueCard">
+      <div class="sv-head">
+        <div>
+          <div class="sv-title">💰 Стоимость склада <span class="sv-sub">по закупочным ценам (кат. A, с НДС) · видят только админ и руководитель</span></div>
+          <div class="sv-total" id="svTotal">—</div>
+          <div class="sv-meta" id="svMeta"></div>
+        </div>
+        <div class="sv-acts">
+          <button type="button" class="adj-btn" id="svRefresh">↻ Пересчитать</button>
+          <button type="button" class="adj-btn" id="svUploadBtn">📄 Загрузить закупочные цены (PDF прайса)</button>
+          <input type="file" id="svUploadFile" accept="application/pdf,.pdf" hidden>
+        </div>
+      </div>
+      <div class="sv-status" id="svStatus"></div>
+      <details class="sv-details" id="svItemsBox" hidden><summary id="svItemsSum">По позициям</summary><div class="table-wrap" id="svTable"></div></details>
+      <details class="sv-details" id="svMissBox" hidden><summary id="svMissSum">Без закупочной цены</summary><div class="table-wrap" id="svMiss"></div></details>
+    </div>
     <div class="stats">
       <div class="stat"><div class="stat-label">Продано, шт</div><div class="stat-value accent" id="anStatQty">—</div></div>
       <div class="stat"><div class="stat-label">Отгрузок / реализаций</div><div class="stat-value" id="anStatReq">—</div></div>
@@ -4318,6 +4346,75 @@
     }catch(err){
       supStatus("Не получилось: " + err.message, "bad");
     }finally{ btn.disabled = false; }
+  });
+
+  // ---------- Стоимость склада по закупочным ценам (админ и руководитель) ----------
+  // Цены приходят отдельным запросом к Google по PIN и живут только в памяти страницы:
+  // их нет в общих данных, в зеркале и в сохранённой копии для быстрого открытия.
+  let svLoadedAt = 0, svBusy = false;
+  const svMoney = n => Math.round(n).toLocaleString("ru-RU") + " ₸";
+  function svStatus(t, cls){ const el = document.getElementById("svStatus"); el.textContent = t || ""; el.className = "sv-status" + (cls ? " " + cls : ""); }
+  function parsePurchasePrices(pages){
+    const isNum = s => /^\d{1,3}(?:[\s\u00a0]\d{3})*$/.test(s);
+    const items = [], skipped = [];
+    pages.forEach(page => {
+      const t = page.map(i => ({s: String(i.s).replace(/\u00a0/g, " ").trim(), x: i.x, y: i.y})).filter(i => i.s).sort((a, b) => (b.y - a.y) || (a.x - b.x));
+      const rows = [];
+      t.forEach(i => { const r = rows.find(r => Math.abs(r.y - i.y) <= 2); if(r) r.items.push(i); else rows.push({y: i.y, items: [i]}); });
+      rows.forEach(r => {
+        const its = r.items.sort((a, b) => a.x - b.x);
+        const nums = its.filter(i => isNum(i.s)), text = its.filter(i => !isNum(i.s));
+        if(!text.length) return;
+        const head = text.map(i => i.s).join(" ");
+        if(/^Код\b|Цена в тенге/i.test(head)) return;
+        if(nums.length < 5){ if(nums.length) skipped.push(head); return; }
+        const code = text[0].s.split(/\s+/)[0];
+        const name = (text[0].s.slice(code.length) + " " + text.slice(1).map(i => i.s).join(" ")).trim();
+        items.push({code, name, price: Number(nums[nums.length - 5].s.replace(/\s/g, ""))});   // первая из 5 колонок — категория A
+      });
+    });
+    return {items, skipped};
+  }
+  async function loadStockValue(force){
+    if(!seesAnalytics() || svBusy) return;
+    if(!force && Date.now() - svLoadedAt < 60000) return;
+    svBusy = true; svStatus("Считаю…");
+    try{
+      const r = await api("stockValue", {});
+      svLoadedAt = Date.now();
+      document.getElementById("svTotal").textContent = r.pricesCount ? svMoney(r.total) : "—";
+      document.getElementById("svMeta").textContent = r.pricesCount
+        ? `позиций с ценой: ${r.items.length}${r.missing.length ? ` · без цены: ${r.missing.length}` : ""} · остатки 1С от ${r.stockAt || "—"} + движения за день · цены загружены ${r.pricesAt || "—"}`
+        : "";
+      svStatus(r.pricesCount ? "" : "Закупочные цены ещё не загружены — нажмите «Загрузить закупочные цены» и выберите PDF прайса.", r.pricesCount ? "" : "bad");
+      const ib = document.getElementById("svItemsBox"), mb = document.getElementById("svMissBox");
+      ib.hidden = !r.items.length; mb.hidden = !r.missing.length || !r.pricesCount;
+      document.getElementById("svItemsSum").textContent = `По позициям (${r.items.length})`;
+      document.getElementById("svTable").innerHTML = `<table><thead><tr><th>Код</th><th>Наименование</th><th class="num">Кол-во</th><th class="num">Цена</th><th class="num">Сумма</th></tr></thead><tbody>` +
+        r.items.map(i => `<tr><td class="code">${esc(i.code)}</td><td class="name">${esc(i.name)}</td><td class="num">${fmtNum(i.qty)}</td><td class="num">${svMoney(i.price)}</td><td class="num"><b>${svMoney(i.sum)}</b></td></tr>`).join("") + `</tbody></table>`;
+      document.getElementById("svMissSum").textContent = `Без закупочной цены — не учтены (${r.missing.length})`;
+      document.getElementById("svMiss").innerHTML = `<table><thead><tr><th>Код</th><th>Наименование</th><th class="num">Кол-во</th></tr></thead><tbody>` +
+        r.missing.map(i => `<tr><td class="code">${esc(i.code)}</td><td class="name">${esc(i.name)}</td><td class="num">${fmtNum(i.qty)}</td></tr>`).join("") + `</tbody></table>`;
+    }catch(err){ svStatus("Не получилось посчитать: " + err.message, "bad"); }
+    finally{ svBusy = false; }
+  }
+  document.querySelector('.tab-btn[data-view="analytics"]').addEventListener("click", () => loadStockValue(false));
+  document.getElementById("svRefresh").addEventListener("click", () => loadStockValue(true));
+  document.getElementById("svUploadBtn").addEventListener("click", () => document.getElementById("svUploadFile").click());
+  document.getElementById("svUploadFile").addEventListener("change", async e => {
+    const file = e.target.files[0]; e.target.value = "";
+    if(!file) return;
+    const btn = document.getElementById("svUploadBtn");
+    btn.disabled = true; svStatus("Читаю прайс…");
+    try{
+      const res = parsePurchasePrices(await pdfPages(file));
+      if(!res.items.length) throw new Error("не нашёл строк с пятью ценами (A, B, C, D, розница) — это точно прайс QMT?");
+      if(!confirm(`Нашёл ${res.items.length} позиций${res.skipped.length ? `, пропущено ${res.skipped.length}` : ""}.\nЗакупочная цена — колонка A. Например: ${res.items.slice(0, 3).map(i => i.code + " — " + svMoney(i.price)).join(", ")}.\n\nЗаменить закупочные цены?`)) { svStatus(""); return; }
+      const r = await api("uploadPurchasePrices", {items: res.items});
+      svStatus(`Загружено цен: ${r.count} ✓`, "ok");
+      await loadStockValue(true);
+    }catch(err){ svStatus("Не получилось: " + err.message, "bad"); }
+    finally{ btn.disabled = false; }
   });
 
   // ---------- Корректировка: форма ----------
