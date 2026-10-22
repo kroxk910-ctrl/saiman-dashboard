@@ -773,6 +773,22 @@
   .sv-status.bad{color:var(--bad, #c0392b);} .sv-status.ok{color:var(--ok);}
   .sv-details{margin-top:10px;} .sv-details > summary{cursor:pointer; font-weight:600; color:var(--ink);}
   .sv-details table td.num, .sv-details table th.num{text-align:right; white-space:nowrap;}
+  .fin-lock{max-width:640px; margin:10px 0 18px; border:1px solid var(--line); border-radius:9px; background:var(--panel); padding:16px;}
+  .fin-lock-title{font-weight:700; font-size:18px; color:var(--ink); margin-bottom:6px;}
+  .fin-lock-row{display:flex; gap:8px; flex-wrap:wrap; align-items:center;}
+  .fin-lock-row input{font:inherit; font-size:18px; letter-spacing:3px; width:150px; padding:6px 10px; border:1px solid var(--line); border-radius:8px; background:var(--panel-2); color:var(--ink);}
+  .fin-top{display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;}
+  .fin-month{display:flex; gap:10px; align-items:center; font-size:18px; color:var(--ink);}
+  .fin-top-acts{display:flex; gap:6px;}
+  .fin-stats{margin-bottom:14px;}
+  .fin-stats .stat-sub{font-size:12px; color:var(--ink-dim); margin-top:4px;}
+  .fin-sales{margin:0 0 14px;}
+  .fin-kinds{display:flex; flex-wrap:wrap; gap:6px 16px; margin:8px 0 12px; font-size:14px; color:var(--ink);}
+  .fin-kinds label{display:flex; gap:6px; align-items:center; cursor:pointer;}
+  .fin-form{display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:0 14px;}
+  .fin-list{margin:0 0 16px;} .fin-list h4{margin:14px 0 6px; font-size:15px; color:var(--ink);}
+  .fin-list td.num, .fin-list th.num{text-align:right; white-space:nowrap;}
+  .fin-del{border:none; background:none; cursor:pointer; color:var(--ink-dim); font-size:15px;}
   .autoreal{margin:0 0 18px; border:1px solid var(--line); border-radius:9px; background:var(--panel);}
   .autoreal > summary{padding:10px 14px; cursor:pointer; font-weight:600; font-size:15px; color:var(--ink);}
   .autoreal > summary .sub{font-weight:400; color:var(--ink-dim); font-size:13px;}
@@ -1146,6 +1162,7 @@
     <button class="tab-btn" data-view="revision" data-warehouse-only hidden>Ревизия <span class="count" id="revCount">—</span></button>
     <button class="tab-btn" data-view="pricelist">Прайс-лист <span class="count" id="pricelistCount">—</span></button>
     <button class="tab-btn" data-view="analytics" data-admin-only hidden>Аналитика</button>
+    <button class="tab-btn" data-view="finance" data-admin-only hidden>Финансы</button>
   </div>
 </div>
 
@@ -1357,6 +1374,55 @@
     </div>
     <div class="an-title" style="margin:18px 0 8px">Все позиции · «хватит на» = доступно ÷ средний расход в день за период</div>
     <div class="table-wrap"><div id="anTableHost"></div></div>
+  </section>
+
+  <!-- ============ FINANCE VIEW (админ и руководитель, вход по коду из Telegram) ============ -->
+  <section class="view" id="view-finance">
+    <div class="fin-lock" id="finLock">
+      <div class="fin-lock-title">🔐 Финансы</div>
+      <p class="view-note">Себестоимость, прибыль, оплаты и расходы. Данные лежат в отдельной закрытой таблице. Для входа нужен одноразовый код — он придёт вам в Telegram. Через 10 минут без действий раздел закроется сам.</p>
+      <div class="fin-lock-row">
+        <button type="button" class="ok-btn" id="finSendCode">Отправить код в Telegram</button>
+        <input type="text" id="finCodeInput" inputmode="numeric" maxlength="6" placeholder="Код из 6 цифр" autocomplete="one-time-code">
+        <button type="button" class="ok-btn" id="finEnter">Войти</button>
+      </div>
+      <div class="sv-status" id="finLockStatus"></div>
+    </div>
+    <div id="finMain" hidden>
+      <div class="fin-top">
+        <div class="fin-month"><button type="button" class="adj-btn" id="finPrev">‹</button><b id="finMonthLabel"></b><button type="button" class="adj-btn" id="finNext">›</button></div>
+        <div class="fin-top-acts"><button type="button" class="adj-btn" id="finReload">↻ Обновить</button><button type="button" class="adj-btn" id="finExit">Закрыть финансы</button></div>
+      </div>
+      <div class="sv-status" id="finStatus"></div>
+      <div class="stats fin-stats" id="finStats"></div>
+      <div class="fin-sales" id="finSales"></div>
+      <div class="sv-card">
+        <div class="sv-title">➕ Внести</div>
+        <div class="fin-kinds" id="finKinds">
+          <label><input type="radio" name="finKind" value="income" checked> Поступление от клиента</label>
+          <label><input type="radio" name="finKind" value="supplier"> Оплата поставщику</label>
+          <label><input type="radio" name="finKind" value="expense"> Расход</label>
+          <label><input type="radio" name="finKind" value="deposit"> Депозит</label>
+          <label><input type="radio" name="finKind" value="start"> Остатки на начало месяца</label>
+        </div>
+        <div class="fin-form">
+          <div class="form-field" data-for="income supplier expense deposit"><label>Дата</label><input type="date" id="finDate"></div>
+          <div class="form-field" data-for="deposit"><label>Что сделали</label><select id="finDepDir"><option value="1">Положили на депозит</option><option value="-1">Сняли с депозита</option></select></div>
+          <div class="form-field" data-for="income supplier expense deposit"><label>Сумма, ₸</label><input type="text" id="finSum" inputmode="decimal" placeholder="1 250 000 или 1000000+250000"><div class="item-hint" id="finSumHint"></div></div>
+          <div class="form-field" data-for="income"><label>Клиент</label><input type="text" id="finClient" list="finClientsList" placeholder="Например: ТОО Альфа"></div>
+          <div class="form-field" data-for="expense"><label>Получатель</label><input type="text" id="finPayee" list="finPayeesList" placeholder="Кому заплатили"></div>
+          <div class="form-field" data-for="expense"><label>Категория</label><select id="finCategory"></select></div>
+          <div class="form-field" data-for="income supplier expense deposit"><label>Комментарий</label><input type="text" id="finComment" placeholder="Необязательно: № счёта, за что"></div>
+          <div class="form-field" data-for="start"><label>Остаток на счёте на 1-е число, ₸</label><input type="text" id="finStartAcc" inputmode="decimal"></div>
+          <div class="form-field" data-for="start"><label>Депозит на 1-е число, ₸</label><input type="text" id="finStartDep" inputmode="decimal"></div>
+          <datalist id="finClientsList"></datalist><datalist id="finPayeesList"></datalist>
+        </div>
+        <div class="form-error" id="finFormError"></div>
+        <div class="form-success" id="finFormOk"></div>
+        <button type="button" class="ok-btn" id="finSave">Сохранить</button>
+      </div>
+      <div id="finLists"></div>
+    </div>
   </section>
 
   <!-- ============ PRICELIST VIEW ============ -->
@@ -2356,7 +2422,7 @@
   // ---------- Server calls ----------
   // Свежие данные, пришедшие вместе с ответом (вход, любое действие) — следующему syncAll не нужен отдельный запрос
   let freshPayload = null;
-  const READ_ACTIONS = ["login", "data", "telegramStatus", "parseSupplierInvoice"];
+  const READ_ACTIONS = ["login", "data", "telegramStatus", "parseSupplierInvoice", "stockValue", "finData", "finLogout"];
   // Google иногда сбоит: отдаёт свою HTML-страницу ошибки или теряет тело запроса (тогда отвечает как на простое
   // открытие ссылки — «Сервис работает»). Чтение в таких случаях тихо повторяем; запись — только если запрос
   // точно не дошёл до скрипта (второй случай), иначе сообщаем, чтобы не задвоить.
@@ -4416,6 +4482,158 @@
     }catch(err){ svStatus("Не получилось: " + err.message, "bad"); }
     finally{ btn.disabled = false; }
   });
+
+  // ---------- Финансы (админ и руководитель): вход по коду из Telegram ----------
+  // Токен и все цифры — только в памяти страницы: не сохраняются ни в браузере, ни в зеркале.
+  // 10 минут без действий в разделе — раздел закрывается сам (сервер тоже держит сессию не дольше 15 минут).
+  const FIN_IDLE_MS = 10 * 60 * 1000;
+  const FIN_MONTHS = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+  const FIN_KIND_TITLE = {income: "Поступления от клиентов", supplier: "Оплаты поставщику", expense: "Расходы", deposit: "Депозит"};
+  let finToken = "", finLastAct = 0, finMonth = "", finCache = null;
+  const finEl = id => document.getElementById(id);
+  const finMoney = n => (n < 0 ? "−" : "") + Math.round(Math.abs(n)).toLocaleString("ru-RU") + " ₸";
+  const finMonthNow = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); };
+  const finMonthLabel = m => FIN_MONTHS[Number(m.slice(5)) - 1] + " " + m.slice(0, 4);
+  const finShift = (m, k) => { const d = new Date(Number(m.slice(0, 4)), Number(m.slice(5)) - 1 + k, 1); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); };
+  function finParseSum(v){
+    const s = String(v || "").replace(/[\s\u00a0]/g, "").replace(/,/g, ".");
+    if(!/^[+-]?\d+(\.\d+)?([+-]\d+(\.\d+)?)*$/.test(s)) return NaN;
+    return (s.match(/[+-]?\d+(\.\d+)?/g) || []).reduce((a, x) => a + Number(x), 0);
+  }
+  function finTouch(){ finLastAct = Date.now(); }
+  function finClose(msg){
+    if(finToken){ const t = finToken; api("finLogout", {finToken: t}).catch(() => {}); }
+    finToken = ""; finCache = null;
+    finEl("finMain").hidden = true; finEl("finLock").hidden = false;
+    finEl("finStats").innerHTML = ""; finEl("finLists").innerHTML = ""; finEl("finSales").innerHTML = "";
+    finEl("finCodeInput").value = "";
+    const st = finEl("finLockStatus"); st.textContent = msg || ""; st.className = "sv-status" + (msg ? " bad" : "");
+  }
+  async function finCall(action, payload){
+    finTouch();
+    try{ return await api(action, Object.assign({finToken}, payload)); }
+    catch(err){ if(/Сессия «Финансов»|Войдите в «Финансы»/.test(err.message)) finClose("Сессия закрылась — войдите по коду заново."); throw err; }
+  }
+  setInterval(() => { if(finToken && Date.now() - finLastAct > FIN_IDLE_MS) finClose("Раздел закрыт: 10 минут без действий."); }, 20000);
+  document.addEventListener("visibilitychange", () => { if(!document.hidden && finToken && Date.now() - finLastAct > FIN_IDLE_MS) finClose("Раздел закрыт: 10 минут без действий."); });
+  finEl("view-finance").addEventListener("input", finTouch); finEl("view-finance").addEventListener("click", finTouch);
+
+  finEl("finSendCode").addEventListener("click", async () => {
+    const b = finEl("finSendCode"), st = finEl("finLockStatus");
+    b.disabled = true; st.className = "sv-status"; st.textContent = "Отправляю…";
+    try{ await api("finCode", {}); st.textContent = "Код отправлен в Telegram — введите его здесь (действует 5 минут)."; st.className = "sv-status ok"; finEl("finCodeInput").focus(); }
+    catch(err){ st.textContent = err.message; st.className = "sv-status bad"; }
+    finally{ setTimeout(() => { b.disabled = false; }, 15000); }
+  });
+  async function finEnter(){
+    const st = finEl("finLockStatus"), code = finEl("finCodeInput").value.replace(/\D/g, "");
+    if(code.length !== 6){ st.textContent = "Введите 6 цифр из Telegram"; st.className = "sv-status bad"; return; }
+    finEl("finEnter").disabled = true;
+    try{
+      const r = await api("finLogin", {code});
+      finToken = r.token; finTouch(); finMonth = finMonth || finMonthNow();
+      finEl("finLock").hidden = true; finEl("finMain").hidden = false; st.textContent = "";
+      finEl("finDate").value = new Date().toISOString().slice(0, 10);
+      finKindChanged();
+      await finLoad();
+    }catch(err){ st.textContent = err.message; st.className = "sv-status bad"; }
+    finally{ finEl("finEnter").disabled = false; }
+  }
+  finEl("finEnter").addEventListener("click", finEnter);
+  finEl("finCodeInput").addEventListener("keydown", e => { if(e.key === "Enter") finEnter(); });
+  finEl("finExit").addEventListener("click", () => finClose(""));
+  finEl("finReload").addEventListener("click", () => finLoad());
+  finEl("finPrev").addEventListener("click", () => { finMonth = finShift(finMonth, -1); finLoad(); });
+  finEl("finNext").addEventListener("click", () => { finMonth = finShift(finMonth, 1); finLoad(); });
+
+  const finKind = () => (document.querySelector('input[name="finKind"]:checked') || {}).value || "income";
+  function finKindChanged(){
+    const k = finKind();
+    document.querySelectorAll("#view-finance .fin-form [data-for]").forEach(f => { f.hidden = !f.dataset.for.split(" ").includes(k); });
+    hideMsg(finEl("finFormError")); hideMsg(finEl("finFormOk"));
+    if(k === "start" && finCache && finCache.start){ finEl("finStartAcc").value = finCache.start.account; finEl("finStartDep").value = finCache.start.deposit; }
+  }
+  document.querySelectorAll('input[name="finKind"]').forEach(r => r.addEventListener("change", finKindChanged));
+  finEl("finSum").addEventListener("input", () => {
+    const v = finEl("finSum").value, n = finParseSum(v), h = finEl("finSumHint");
+    h.textContent = !v.trim() ? "" : isNaN(n) ? "не число" : (/[+-].*\d/.test(v.trim().slice(1)) ? "= " : "") + finMoney(n);
+    h.className = "item-hint" + (v.trim() && isNaN(n) ? " bad" : "");
+  });
+  finEl("finPayee").addEventListener("change", () => {
+    const c = finCache && finCache.payees[finEl("finPayee").value.trim()];
+    if(c) finEl("finCategory").value = c;
+  });
+
+  finEl("finSave").addEventListener("click", async () => {
+    const k = finKind(), err = finEl("finFormError"), ok = finEl("finFormOk"), b = finEl("finSave");
+    hideMsg(err); hideMsg(ok);
+    const iso = finEl("finDate").value, date = iso ? iso.split("-").reverse().join(".") : "";
+    let p = {kind: k};
+    if(k === "start"){
+      p.month = finMonth; p.account = finEl("finStartAcc").value; p.deposit = finEl("finStartDep").value;
+      if(isNaN(finParseSum(p.account))){ showMsg(err, "Остаток на счёте — числом"); return; }
+    }else{
+      let n = finParseSum(finEl("finSum").value);
+      if(isNaN(n) || !n){ showMsg(err, "Сумма — числом, например 1 250 000"); return; }
+      if(!date){ showMsg(err, "Укажите дату"); return; }
+      if(k === "deposit") n = Math.abs(n) * Number(finEl("finDepDir").value);
+      p = Object.assign(p, {date, sum: String(n), comment: finEl("finComment").value.trim()});
+      if(k === "income"){ p.client = finEl("finClient").value.trim(); if(!p.client){ showMsg(err, "Укажите клиента"); return; } }
+      if(k === "expense"){ p.payee = finEl("finPayee").value.trim(); p.category = finEl("finCategory").value; if(!p.payee){ showMsg(err, "Укажите получателя"); return; } }
+    }
+    b.disabled = true;
+    try{
+      await finCall("finAdd", p);
+      showMsg(ok, k === "start" ? "Остатки на начало месяца сохранены ✓" : `Сохранено: ${FIN_KIND_TITLE[k].toLowerCase()} — ${finMoney(Number(p.sum))} ✓`);
+      ["finSum", "finComment", "finClient", "finPayee"].forEach(id => { finEl(id).value = ""; }); finEl("finSumHint").textContent = "";
+      const pm = date ? date.slice(6) + "-" + date.slice(3, 5) : finMonth;
+      if(k !== "start" && pm !== finMonth) finMonth = pm;
+      await finLoad();
+    }catch(e){ showMsg(err, e.message); }
+    finally{ b.disabled = false; }
+  });
+
+  async function finLoad(){
+    if(!finToken) return;
+    finEl("finMonthLabel").textContent = finMonthLabel(finMonth);
+    const st = finEl("finStatus"); st.textContent = "Загружаю…"; st.className = "sv-status";
+    try{
+      const d = await finCall("finData", {month: finMonth});
+      finCache = d; st.textContent = "";
+      finRender(d);
+    }catch(err){ if(finToken){ st.textContent = "Не получилось: " + err.message; st.className = "sv-status bad"; } }
+  }
+  function finRender(d){
+    const s = d.summary;
+    const stat = (label, val, cls, sub) => `<div class="stat"><div class="stat-label">${label}</div><div class="stat-value ${cls || ""}">${val}</div>${sub ? `<div class="stat-sub">${sub}</div>` : ""}</div>`;
+    finEl("finStats").innerHTML =
+      stat("Поступления", finMoney(s.income), "ok", `записей: ${d.income.length}`) +
+      stat("Оплачено поставщику", finMoney(s.supplier), "", `записей: ${d.supplier.length}`) +
+      stat("Расходы", finMoney(s.expense), "warn", `записей: ${d.expense.length}`) +
+      stat("Счёт на конец", d.start ? finMoney(s.accountEnd) : "—", "accent", d.start ? `на 1-е: ${finMoney(d.start.account)} · депозит: ${finMoney(s.depositEnd)}` : "внесите «Остатки на начало месяца»");
+    finEl("finSales").innerHTML = s.salesCount
+      ? `<div class="stats">${stat("Выручка (реализации)", finMoney(s.revenue))}${stat("Закуп", finMoney(s.cost))}${stat("Валовая прибыль с НДС", finMoney(s.profit), "accent")}${stat("Без НДС 16%", finMoney(s.profitNoVat))}</div>`
+      : `<div class="view-note">📊 Выручка, закуп и валовая прибыль появятся здесь сами, когда подключим отчёт 1С «Валовая прибыль».</div>`;
+    const cat = finEl("finCategory"), keep = cat.value;
+    cat.innerHTML = d.categories.map(c => `<option>${esc(c)}</option>`).join(""); if(keep) cat.value = keep;
+    finEl("finClientsList").innerHTML = d.clients.map(c => `<option value="${esc(c)}">`).join("");
+    finEl("finPayeesList").innerHTML = Object.keys(d.payees).map(c => `<option value="${esc(c)}">`).join("");
+    const table = (kind, rows, cols) => !rows.length ? "" :
+      `<div class="fin-list"><h4>${FIN_KIND_TITLE[kind]} · ${finMoney(rows.reduce((a, r) => a + r.sum, 0))}</h4><div class="table-wrap"><table><thead><tr><th>Дата</th>${cols.map(c => `<th>${c[0]}</th>`).join("")}<th class="num">Сумма</th><th></th></tr></thead><tbody>` +
+      rows.map(r => `<tr><td>${esc(r.date)}</td>${cols.map(c => `<td>${esc(r[c[1]] || "")}</td>`).join("")}<td class="num"><b>${finMoney(r.sum)}</b></td><td><button type="button" class="fin-del" title="Удалить" data-fdel="${kind}" data-id="${esc(r.id)}">✕</button></td></tr>`).join("") + `</tbody></table></div></div>`;
+    const cats = s.byCategory.length ? `<div class="fin-list"><h4>Расходы по категориям</h4><div class="table-wrap"><table><tbody>${s.byCategory.map(c => `<tr><td>${esc(c.category)}</td><td class="num">${finMoney(c.sum)}</td></tr>`).join("")}</tbody></table></div></div>` : "";
+    finEl("finLists").innerHTML = (!d.income.length && !d.supplier.length && !d.expense.length && !d.deposit.length) ? `<div class="view-note">За ${finMonthLabel(d.month).toLowerCase()} записей пока нет.</div>` :
+      table("income", d.income, [["Клиент", "client"], ["Комментарий", "comment"]]) +
+      table("supplier", d.supplier, [["Счёт / комментарий", "comment"]]) +
+      cats + table("expense", d.expense, [["Получатель", "payee"], ["Категория", "category"], ["Комментарий", "comment"]]) +
+      table("deposit", d.deposit, [["Комментарий", "comment"]]);
+    finEl("finLists").querySelectorAll("[data-fdel]").forEach(b => b.addEventListener("click", async () => {
+      if(!confirm("Удалить эту запись?")) return;
+      b.disabled = true;
+      try{ await finCall("finDelete", {kind: b.dataset.fdel, id: b.dataset.id}); await finLoad(); }
+      catch(err){ b.disabled = false; alert("Не получилось: " + err.message); }
+    }));
+  }
 
   // ---------- Корректировка: форма ----------
   const adjType = () => (document.querySelector('input[name="adjType"]:checked') || {}).value || "shortage";
