@@ -1378,20 +1378,10 @@
 
   <!-- ============ FINANCE VIEW (админ и руководитель, вход по коду из Telegram) ============ -->
   <section class="view" id="view-finance">
-    <div class="fin-lock" id="finLock">
-      <div class="fin-lock-title">🔐 Финансы</div>
-      <p class="view-note">Себестоимость, прибыль, оплаты и расходы. Данные лежат в отдельной закрытой таблице. Для входа нужен одноразовый код — он придёт вам в Telegram. Через 10 минут без действий раздел закроется сам.</p>
-      <div class="fin-lock-row">
-        <button type="button" class="ok-btn" id="finSendCode">Отправить код в Telegram</button>
-        <input type="text" id="finCodeInput" inputmode="numeric" maxlength="6" placeholder="Код из 6 цифр" autocomplete="one-time-code">
-        <button type="button" class="ok-btn" id="finEnter">Войти</button>
-      </div>
-      <div class="sv-status" id="finLockStatus"></div>
-    </div>
-    <div id="finMain" hidden>
+    <div id="finMain">
       <div class="fin-top">
         <div class="fin-month"><button type="button" class="adj-btn" id="finPrev">‹</button><b id="finMonthLabel"></b><button type="button" class="adj-btn" id="finNext">›</button></div>
-        <div class="fin-top-acts"><button type="button" class="adj-btn" id="finReload">↻ Обновить</button><button type="button" class="adj-btn" id="finExit">Закрыть финансы</button></div>
+        <div class="fin-top-acts"><button type="button" class="adj-btn" id="finReload">↻ Обновить</button></div>
       </div>
       <div class="sv-status" id="finStatus"></div>
       <div class="stats fin-stats" id="finStats"></div>
@@ -2422,7 +2412,7 @@
   // ---------- Server calls ----------
   // Свежие данные, пришедшие вместе с ответом (вход, любое действие) — следующему syncAll не нужен отдельный запрос
   let freshPayload = null;
-  const READ_ACTIONS = ["login", "data", "telegramStatus", "parseSupplierInvoice", "stockValue", "finData", "finLogout"];
+  const READ_ACTIONS = ["login", "data", "telegramStatus", "parseSupplierInvoice", "stockValue", "finData"];
   // Google иногда сбоит: отдаёт свою HTML-страницу ошибки или теряет тело запроса (тогда отвечает как на простое
   // открытие ссылки — «Сервис работает»). Чтение в таких случаях тихо повторяем; запись — только если запрос
   // точно не дошёл до скрипта (второй случай), иначе сообщаем, чтобы не задвоить.
@@ -4483,13 +4473,12 @@
     finally{ btn.disabled = false; }
   });
 
-  // ---------- Финансы (админ и руководитель): вход по коду из Telegram ----------
-  // Токен и все цифры — только в памяти страницы: не сохраняются ни в браузере, ни в зеркале.
-  // 10 минут без действий в разделе — раздел закрывается сам (сервер тоже держит сессию не дольше 15 минут).
-  const FIN_IDLE_MS = 10 * 60 * 1000;
+  // ---------- Финансы (админ и руководитель) ----------
+  // Открываются по PIN дашборда (сервер проверяет роль). Все цифры — только в памяти страницы:
+  // не сохраняются ни в браузере, ни в зеркале.
   const FIN_MONTHS = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
   const FIN_KIND_TITLE = {income: "Поступления от клиентов", supplier: "Оплаты поставщику", expense: "Расходы", deposit: "Депозит"};
-  let finToken = "", finLastAct = 0, finMonth = "", finCache = null;
+  let finMonth = "", finCache = null, finOpened = false;
   const finEl = id => document.getElementById(id);
   const finMoney = n => (n < 0 ? "−" : "") + Math.round(Math.abs(n)).toLocaleString("ru-RU") + " ₸";
   const finMonthNow = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); };
@@ -4500,48 +4489,17 @@
     if(!/^[+-]?\d+(\.\d+)?([+-]\d+(\.\d+)?)*$/.test(s)) return NaN;
     return (s.match(/[+-]?\d+(\.\d+)?/g) || []).reduce((a, x) => a + Number(x), 0);
   }
-  function finTouch(){ finLastAct = Date.now(); }
-  function finClose(msg){
-    if(finToken){ const t = finToken; api("finLogout", {finToken: t}).catch(() => {}); }
-    finToken = ""; finCache = null;
-    finEl("finMain").hidden = true; finEl("finLock").hidden = false;
-    finEl("finStats").innerHTML = ""; finEl("finLists").innerHTML = ""; finEl("finSales").innerHTML = "";
-    finEl("finCodeInput").value = "";
-    const st = finEl("finLockStatus"); st.textContent = msg || ""; st.className = "sv-status" + (msg ? " bad" : "");
-  }
-  async function finCall(action, payload){
-    finTouch();
-    try{ return await api(action, Object.assign({finToken}, payload)); }
-    catch(err){ if(/Сессия «Финансов»|Войдите в «Финансы»/.test(err.message)) finClose("Сессия закрылась — войдите по коду заново."); throw err; }
-  }
-  setInterval(() => { if(finToken && Date.now() - finLastAct > FIN_IDLE_MS) finClose("Раздел закрыт: 10 минут без действий."); }, 20000);
-  document.addEventListener("visibilitychange", () => { if(!document.hidden && finToken && Date.now() - finLastAct > FIN_IDLE_MS) finClose("Раздел закрыт: 10 минут без действий."); });
-  finEl("view-finance").addEventListener("input", finTouch); finEl("view-finance").addEventListener("click", finTouch);
-
-  finEl("finSendCode").addEventListener("click", async () => {
-    const b = finEl("finSendCode"), st = finEl("finLockStatus");
-    b.disabled = true; st.className = "sv-status"; st.textContent = "Отправляю…";
-    try{ await api("finCode", {}); st.textContent = "Код отправлен в Telegram — введите его здесь (действует 5 минут)."; st.className = "sv-status ok"; finEl("finCodeInput").focus(); }
-    catch(err){ st.textContent = err.message; st.className = "sv-status bad"; }
-    finally{ setTimeout(() => { b.disabled = false; }, 15000); }
-  });
-  async function finEnter(){
-    const st = finEl("finLockStatus"), code = finEl("finCodeInput").value.replace(/\D/g, "");
-    if(code.length !== 6){ st.textContent = "Введите 6 цифр из Telegram"; st.className = "sv-status bad"; return; }
-    finEl("finEnter").disabled = true;
-    try{
-      const r = await api("finLogin", {code});
-      finToken = r.token; finTouch(); finMonth = finMonth || finMonthNow();
-      finEl("finLock").hidden = true; finEl("finMain").hidden = false; st.textContent = "";
+  const finCall = (action, payload) => api(action, payload);
+  function finOpen(){
+    if(!seesAnalytics()) return;
+    if(!finOpened){
+      finOpened = true; finMonth = finMonthNow();
       finEl("finDate").value = new Date().toISOString().slice(0, 10);
       finKindChanged();
-      await finLoad();
-    }catch(err){ st.textContent = err.message; st.className = "sv-status bad"; }
-    finally{ finEl("finEnter").disabled = false; }
+    }
+    finLoad();
   }
-  finEl("finEnter").addEventListener("click", finEnter);
-  finEl("finCodeInput").addEventListener("keydown", e => { if(e.key === "Enter") finEnter(); });
-  finEl("finExit").addEventListener("click", () => finClose(""));
+  document.querySelector('.tab-btn[data-view="finance"]').addEventListener("click", finOpen);
   finEl("finReload").addEventListener("click", () => finLoad());
   finEl("finPrev").addEventListener("click", () => { finMonth = finShift(finMonth, -1); finLoad(); });
   finEl("finNext").addEventListener("click", () => { finMonth = finShift(finMonth, 1); finLoad(); });
@@ -4594,14 +4552,14 @@
   });
 
   async function finLoad(){
-    if(!finToken) return;
+    if(!finMonth) return;
     finEl("finMonthLabel").textContent = finMonthLabel(finMonth);
     const st = finEl("finStatus"); st.textContent = "Загружаю…"; st.className = "sv-status";
     try{
       const d = await finCall("finData", {month: finMonth});
       finCache = d; st.textContent = "";
       finRender(d);
-    }catch(err){ if(finToken){ st.textContent = "Не получилось: " + err.message; st.className = "sv-status bad"; } }
+    }catch(err){ st.textContent = "Не получилось: " + err.message; st.className = "sv-status bad"; }
   }
   function finRender(d){
     const s = d.summary;
