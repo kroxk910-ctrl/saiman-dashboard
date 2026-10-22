@@ -773,6 +773,10 @@
   .sv-status.bad{color:var(--bad, #c0392b);} .sv-status.ok{color:var(--ok);}
   .sv-details{margin-top:10px;} .sv-details > summary{cursor:pointer; font-weight:600; color:var(--ink);}
   .sv-details table td.num, .sv-details table th.num{text-align:right; white-space:nowrap;}
+  .fin-orders{margin-top:6px;} .fin-ord{border-bottom:1px solid var(--line-soft);} .fin-ord > summary{cursor:pointer; display:grid; grid-template-columns:90px minmax(0,1fr) 130px 160px; gap:8px; padding:7px 4px; align-items:baseline; list-style:none;}
+  .fin-ord > summary::-webkit-details-marker{display:none;} .fin-ord > summary .num{text-align:right; white-space:nowrap;} .fin-ord-cl small, .fin-ord small{display:block; color:var(--ink-faint); font-size:12px;} .fin-ord .num small{display:inline;}
+  .fin-ord[open] > summary{background:var(--accent-dim);} .fin-ord-date{color:var(--ink-faint); font-variant-numeric:tabular-nums;}
+  @media (max-width:640px){ .fin-ord > summary{grid-template-columns:minmax(0,1fr) auto;} .fin-ord-date{grid-column:1/-1;} }
   .fin-lock{max-width:640px; margin:10px 0 18px; border:1px solid var(--line); border-radius:9px; background:var(--panel); padding:16px;}
   .fin-lock-title{font-weight:700; font-size:18px; color:var(--ink); margin-bottom:6px;}
   .fin-lock-row{display:flex; gap:8px; flex-wrap:wrap; align-items:center;}
@@ -4572,10 +4576,21 @@
       rows.map(r => `<tr><td>${esc(r.name)}</td><td class="num">${v(r.revenue)}</td><td class="num"><b>${v(r.profit)}</b></td><td class="num">${r.revenue ? (r.profit / r.revenue * 100).toFixed(1) : "—"}</td></tr>`).join("") + `</tbody></table></div>`;
     return `<div class="stats fin-stats">${stat("Выручка с НДС", v(x.revenue), "", "без НДС: " + finMoney(x.revenue))}${stat("Себестоимость с НДС", v(x.cost))}${stat("Валовая прибыль с НДС", v(x.profit), "accent", `рентабельность ${x.revenue ? (x.profit / x.revenue * 100).toFixed(1) : 0}%`)}${stat("Прибыль без НДС", finMoney(x.profit))}</div>
       <div class="view-note">${note}</div>
+      ${finOrdersHtml(x.orders || [], v)}
       ${x.managers.length > 1 ? `<details class="sv-details"><summary>По менеджерам (${x.managers.length})</summary>${tbl(x.managers, "Менеджер")}</details>` : ""}
       <details class="sv-details"><summary>По клиентам (${x.clients.length})</summary>${tbl(x.clients, "Клиент")}</details>
       ${x.noCost.length ? `<details class="sv-details"><summary>⚠ Без себестоимости (${x.noCost.length})</summary><div class="table-wrap"><table><thead><tr><th>Код</th><th>Наименование</th><th>Клиент</th><th class="num">Кол-во</th><th class="num">Выручка с НДС</th></tr></thead><tbody>` +
         x.noCost.map(i => `<tr><td class="code">${esc(i.code || "—")}</td><td>${esc(i.name)}</td><td>${esc(i.client)}</td><td class="num">${fmtNum(i.qty)}</td><td class="num">${v(i.rev)}</td></tr>`).join("") + `</tbody></table></div></details>` : ""}`;
+  }
+  // По заказам — как в таблице руководителя: заказ → его позиции (суммы с НДС 16%)
+  function finOrdersHtml(list, v){
+    if(!list.length) return "";
+    const pct = (p, r) => r ? (p / r * 100).toFixed(1) + "%" : "—";
+    return `<details class="sv-details" open><summary>По заказам (${list.length})</summary><div class="fin-orders">` + list.map(o =>
+      `<details class="fin-ord"><summary><span class="fin-ord-date">${esc(o.date || "—")}</span><span class="fin-ord-cl">${esc(o.client)}<small>${esc(o.doc.replace(/\s+от\s+\d{2}\.\d{2}\.\d{4}$/, ""))}</small></span><span class="num">${v(o.revenue)}</span><span class="num"><b>${v(o.profit)}</b> <small>${pct(o.profit, o.revenue)}</small></span></summary>
+        <div class="table-wrap"><table><thead><tr><th>Код</th><th>Наименование</th><th class="num">Кол-во</th><th class="num">Цена закупа</th><th class="num">Закуп</th><th class="num">Цена продажи</th><th class="num">Продажа</th><th class="num">Прибыль с НДС</th><th class="num">Без НДС</th></tr></thead><tbody>` +
+        o.items.map(i => `<tr><td class="code">${esc(i.code || "—")}</td><td>${esc(i.name)}</td><td class="num">${fmtNum(i.qty)}</td><td class="num">${i.qty ? v(i.cost / i.qty) : "—"}${i.byPrice ? ' <small title="по закупочной цене A — 1С ещё не посчитала себестоимость">A</small>' : ""}</td><td class="num">${v(i.cost)}</td><td class="num">${i.qty ? v(i.rev / i.qty) : "—"}</td><td class="num">${v(i.rev)}</td><td class="num"><b>${v(i.rev - i.cost)}</b></td><td class="num">${finMoney(i.rev - i.cost)}</td></tr>`).join("") +
+        `</tbody></table></div></details>`).join("") + `</div></details>`;
   }
   function finRender(d){
     const s = d.summary;
