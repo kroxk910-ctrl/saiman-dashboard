@@ -4561,6 +4561,22 @@
       finRender(d);
     }catch(err){ st.textContent = "Не получилось: " + err.message; st.className = "sv-status bad"; }
   }
+  // Продажи из 1С (суммы в отчёте без НДС; показываем с НДС 16%, как в таблице руководителя, и прибыль без НДС)
+  function finSalesHtml(x, stat){
+    if(!x || !x.count) return `<div class="view-note">📊 Выручка, себестоимость и валовая прибыль появятся здесь сами, когда придёт письмо 1С «QMT продажи» за этот месяц.</div>`;
+    const v = n => finMoney(n * 1.16);
+    const note = [`по реализациям 1С${x.updated ? ", обновлено " + esc(x.updated) : ""}`,
+      x.byPrice ? `себестоимость: ${x.by1c} поз. по 1С, ${x.byPrice} — по закупочной цене A (1С ещё не посчитала — месяц не закрыт)` : "себестоимость — по 1С",
+      x.noCost.length ? `⚠ без себестоимости: ${x.noCost.length} поз. — их прибыль завышена` : ""].filter(Boolean).join(" · ");
+    const tbl = (rows, head) => `<div class="table-wrap"><table><thead><tr><th>${head}</th><th class="num">Выручка с НДС</th><th class="num">Прибыль с НДС</th><th class="num">%</th></tr></thead><tbody>` +
+      rows.map(r => `<tr><td>${esc(r.name)}</td><td class="num">${v(r.revenue)}</td><td class="num"><b>${v(r.profit)}</b></td><td class="num">${r.revenue ? (r.profit / r.revenue * 100).toFixed(1) : "—"}</td></tr>`).join("") + `</tbody></table></div>`;
+    return `<div class="stats fin-stats">${stat("Выручка с НДС", v(x.revenue), "", "без НДС: " + finMoney(x.revenue))}${stat("Себестоимость с НДС", v(x.cost))}${stat("Валовая прибыль с НДС", v(x.profit), "accent", `рентабельность ${x.revenue ? (x.profit / x.revenue * 100).toFixed(1) : 0}%`)}${stat("Прибыль без НДС", finMoney(x.profit))}</div>
+      <div class="view-note">${note}</div>
+      ${x.managers.length > 1 ? `<details class="sv-details"><summary>По менеджерам (${x.managers.length})</summary>${tbl(x.managers, "Менеджер")}</details>` : ""}
+      <details class="sv-details"><summary>По клиентам (${x.clients.length})</summary>${tbl(x.clients, "Клиент")}</details>
+      ${x.noCost.length ? `<details class="sv-details"><summary>⚠ Без себестоимости (${x.noCost.length})</summary><div class="table-wrap"><table><thead><tr><th>Код</th><th>Наименование</th><th>Клиент</th><th class="num">Кол-во</th><th class="num">Выручка с НДС</th></tr></thead><tbody>` +
+        x.noCost.map(i => `<tr><td class="code">${esc(i.code || "—")}</td><td>${esc(i.name)}</td><td>${esc(i.client)}</td><td class="num">${fmtNum(i.qty)}</td><td class="num">${v(i.rev)}</td></tr>`).join("") + `</tbody></table></div></details>` : ""}`;
+  }
   function finRender(d){
     const s = d.summary;
     const stat = (label, val, cls, sub) => `<div class="stat"><div class="stat-label">${label}</div><div class="stat-value ${cls || ""}">${val}</div>${sub ? `<div class="stat-sub">${sub}</div>` : ""}</div>`;
@@ -4569,9 +4585,7 @@
       stat("Оплачено поставщику", finMoney(s.supplier), "", `записей: ${d.supplier.length}`) +
       stat("Расходы", finMoney(s.expense), "warn", `записей: ${d.expense.length}`) +
       stat("Счёт на конец", d.start ? finMoney(s.accountEnd) : "—", "accent", d.start ? `на 1-е: ${finMoney(d.start.account)} · депозит: ${finMoney(s.depositEnd)}` : "внесите «Остатки на начало месяца»");
-    finEl("finSales").innerHTML = s.salesCount
-      ? `<div class="stats">${stat("Выручка (реализации)", finMoney(s.revenue))}${stat("Закуп", finMoney(s.cost))}${stat("Валовая прибыль с НДС", finMoney(s.profit), "accent")}${stat("Без НДС 16%", finMoney(s.profitNoVat))}</div>`
-      : `<div class="view-note">📊 Выручка, закуп и валовая прибыль появятся здесь сами, когда подключим отчёт 1С «Валовая прибыль».</div>`;
+    finEl("finSales").innerHTML = finSalesHtml(s.sales, stat);
     const cat = finEl("finCategory"), keep = cat.value;
     cat.innerHTML = d.categories.map(c => `<option>${esc(c)}</option>`).join(""); if(keep) cat.value = keep;
     finEl("finClientsList").innerHTML = d.clients.map(c => `<option value="${esc(c)}">`).join("");
