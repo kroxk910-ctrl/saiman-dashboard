@@ -773,6 +773,10 @@
   .sv-status.bad{color:var(--bad, #c0392b);} .sv-status.ok{color:var(--ok);}
   .sv-details{margin-top:10px;} .sv-details > summary{cursor:pointer; font-weight:600; color:var(--ink);}
   .sv-details table td.num, .sv-details table th.num{text-align:right; white-space:nowrap;}
+  .sv-price{font:inherit; color:inherit; background:none; border:0; border-bottom:1px dashed var(--ink-faint); padding:0 1px; cursor:pointer;} .sv-price:hover{color:var(--accent);}
+  .sv-price.manual{color:var(--accent); font-weight:600;} .sv-price.empty{color:var(--accent); border-bottom-style:solid;} .sv-man{font-size:11px;}
+  .sv-edit{display:inline-flex; gap:4px; align-items:center;} .sv-inp{width:110px; text-align:right; font:inherit; padding:3px 6px; border:1px solid var(--accent); border-radius:6px; background:var(--panel); color:var(--ink);} .sv-inp.bad{border-color:var(--danger);}
+  .sv-ok, .sv-no{font:inherit; border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:6px; padding:2px 7px; cursor:pointer;} .sv-ok{color:var(--ok);}
   .fin-orders{margin-top:6px;} .fin-ord{border-bottom:1px solid var(--line-soft);} .fin-ord > summary{cursor:pointer; display:grid; grid-template-columns:90px minmax(0,1fr) 130px 160px; gap:8px; padding:7px 4px; align-items:baseline; list-style:none;}
   .fin-ord > summary::-webkit-details-marker{display:none;} .fin-ord > summary .num{text-align:right; white-space:nowrap;} .fin-ord-cl small, .fin-ord small{display:block; color:var(--ink-faint); font-size:12px;} .fin-ord .num small{display:inline;}
   .fin-ord[open] > summary{background:var(--accent-dim);} .fin-ord-date{color:var(--ink-faint); font-variant-numeric:tabular-nums;}
@@ -1317,7 +1321,7 @@
     <div class="sv-card" id="stockValueCard">
       <div class="sv-head">
         <div>
-          <div class="sv-title">💰 Стоимость склада <span class="sv-sub">по закупочным ценам (кат. A, с НДС) · видят только админ и руководитель</span></div>
+          <div class="sv-title">💰 Стоимость склада <span class="sv-sub">по закупочным ценам (кат. A, с НДС) · видят только админ и руководитель · нажмите на цену в таблице, чтобы вписать свою</span></div>
           <div class="sv-total" id="svTotal">—</div>
           <div class="sv-meta" id="svMeta"></div>
         </div>
@@ -4444,20 +4448,47 @@
       svLoadedAt = Date.now();
       document.getElementById("svTotal").textContent = r.pricesCount ? svMoney(r.total) : "—";
       document.getElementById("svMeta").textContent = r.pricesCount
-        ? `позиций с ценой: ${r.items.length}${r.missing.length ? ` · без цены: ${r.missing.length}` : ""} · остатки 1С от ${r.stockAt || "—"} + движения за день · цены загружены ${r.pricesAt || "—"}`
+        ? `позиций с ценой: ${r.items.length}${r.manualCount ? ` (вручную: ${r.manualCount})` : ""}${r.missing.length ? ` · без цены: ${r.missing.length}` : ""} · остатки 1С от ${r.stockAt || "—"} + движения за день · цены загружены ${r.pricesAt || "—"}`
         : "";
       svStatus(r.pricesCount ? "" : "Закупочные цены ещё не загружены — нажмите «Загрузить закупочные цены» и выберите PDF прайса.", r.pricesCount ? "" : "bad");
       const ib = document.getElementById("svItemsBox"), mb = document.getElementById("svMissBox");
       ib.hidden = !r.items.length; mb.hidden = !r.missing.length || !r.pricesCount;
       document.getElementById("svItemsSum").textContent = `По позициям (${r.items.length})`;
       document.getElementById("svTable").innerHTML = `<table><thead><tr><th>Код</th><th>Наименование</th><th class="num">Кол-во</th><th class="num">Цена</th><th class="num">Сумма</th></tr></thead><tbody>` +
-        r.items.map(i => `<tr><td class="code">${esc(i.code)}</td><td class="name">${esc(i.name)}</td><td class="num">${fmtNum(i.qty)}</td><td class="num">${svMoney(i.price)}</td><td class="num"><b>${svMoney(i.sum)}</b></td></tr>`).join("") + `</tbody></table>`;
+        r.items.map(i => `<tr><td class="code">${esc(i.code)}</td><td class="name">${esc(i.name)}</td><td class="num">${fmtNum(i.qty)}</td><td class="num">${svPriceCell(i)}</td><td class="num"><b>${svMoney(i.sum)}</b></td></tr>`).join("") + `</tbody></table>`;
       document.getElementById("svMissSum").textContent = `Без закупочной цены — не учтены (${r.missing.length})`;
-      document.getElementById("svMiss").innerHTML = `<table><thead><tr><th>Код</th><th>Наименование</th><th class="num">Кол-во</th></tr></thead><tbody>` +
-        r.missing.map(i => `<tr><td class="code">${esc(i.code)}</td><td class="name">${esc(i.name)}</td><td class="num">${fmtNum(i.qty)}</td></tr>`).join("") + `</tbody></table>`;
+      document.getElementById("svMiss").innerHTML = `<table><thead><tr><th>Код</th><th>Наименование</th><th class="num">Кол-во</th><th class="num">Цена</th></tr></thead><tbody>` +
+        r.missing.map(i => `<tr><td class="code">${esc(i.code)}</td><td class="name">${esc(i.name)}</td><td class="num">${fmtNum(i.qty)}</td><td class="num">${svPriceCell(i)}</td></tr>`).join("") + `</tbody></table>`;
     }catch(err){ svStatus("Не получилось посчитать: " + err.message, "bad"); }
     finally{ svBusy = false; }
   }
+  // Ручная цена позиции: нажать на цену → вписать свою → Enter. Пустое поле — вернуть цену из прайса.
+  function svPriceCell(i){
+    const tip = i.manual ? `Цена вписана вручную${i.listPrice ? " · по прайсу " + svMoney(i.listPrice) : ""}. Нажмите, чтобы изменить` : "Нажмите, чтобы вписать свою цену";
+    return `<button type="button" class="sv-price${i.manual ? " manual" : ""}${i.price ? "" : " empty"}" data-code="${esc(i.code)}" data-name="${esc(i.name || "")}" data-price="${i.price || ""}" data-manual="${i.manual ? 1 : ""}" title="${esc(tip)}">${i.price ? svMoney(i.price) : "+ цена"}${i.manual ? ' <span class="sv-man">✎</span>' : ""}</button>`;
+  }
+  function svEditPrice(btn){
+    const cell = btn.parentNode, d = btn.dataset;
+    cell.innerHTML = `<span class="sv-edit"><input type="text" inputmode="decimal" class="sv-inp" value="${esc(d.price)}" placeholder="${d.manual ? "пусто — по прайсу" : "цена, ₸"}"><button type="button" class="sv-ok" title="Сохранить">✓</button><button type="button" class="sv-no" title="Отмена">✕</button></span>`;
+    const inp = cell.querySelector("input"); inp.focus(); inp.select();
+    const cancel = () => loadStockValue(true);
+    const save = async () => {
+      const raw = inp.value.replace(/[\s\u00a0₸]/g, "").replace(",", ".");
+      const price = raw === "" ? 0 : Math.round(Number(raw));
+      if(raw !== "" && !(price > 0)){ inp.classList.add("bad"); inp.focus(); return; }
+      if(!price && !d.manual) return cancel();
+      cell.querySelectorAll("input,button").forEach(x => x.disabled = true);
+      try{
+        await api("setPurchasePrice", {code: d.code, name: d.name, price});
+        svStatus(price ? `${d.code}: цена ${svMoney(price)} сохранена ✓` : `${d.code}: вернул цену из прайса ✓`, "ok");
+      }catch(err){ svStatus("Не сохранилось: " + err.message, "bad"); }
+      svBusy = false; await loadStockValue(true);
+    };
+    inp.addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); save(); } else if(e.key === "Escape") cancel(); });
+    cell.querySelector(".sv-ok").addEventListener("click", save);
+    cell.querySelector(".sv-no").addEventListener("click", cancel);
+  }
+  document.getElementById("stockValueCard").addEventListener("click", e => { const b = e.target.closest(".sv-price"); if(b && !svBusy) svEditPrice(b); });
   document.querySelector('.tab-btn[data-view="analytics"]').addEventListener("click", () => loadStockValue(false));
   document.getElementById("svRefresh").addEventListener("click", () => loadStockValue(true));
   document.getElementById("svUploadBtn").addEventListener("click", () => document.getElementById("svUploadFile").click());
