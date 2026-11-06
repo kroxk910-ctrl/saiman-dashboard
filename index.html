@@ -2160,6 +2160,7 @@
             return `<div class="modem-set">📶 Модем к счётчику: <b>${m ? esc(ms ? ms.code || m : m) + (ms ? " · " + esc(ms.name) : "") : "не указан"}</b>${isAdmin()
               ? ` <select data-modemfor="${esc(r.key)}"><option value="">— без модема —</option>${modemsList().map(x => `<option value="${esc(x.key)}"${normCode(x.key) === m ? " selected" : ""}>${esc(x.code || x.name)} · ${esc(x.name)}</option>`).join("")}</select>
                  <button class="adj-btn" data-modemsave="${esc(r.key)}">Сохранить</button>` : ""}</div>`; })() : ""}
+          ${isAdmin() && !r.code ? `<div class="modem-set">🏷 Кода нет. Задать код: <input type="text" maxlength="40" data-codefor="${esc(r.name)}" placeholder="например, ZW01" style="width:130px"> <button class="adj-btn" data-codesave="${esc(r.name)}">Сохранить код</button></div>` : ""}
           ${isAdmin() ? `<button class="adj-btn hide-btn" data-hidekey="${esc(r.key)}" data-hidecode="${esc(r.code)}" data-hidename="${esc(r.name)}" data-hideto="${isHiddenRow(r) ? "0" : "1"}">${isHiddenRow(r) ? "👁 Вернуть в дашборд" : "🙈 Скрыть из дашборда (не на продажу)"}</button>` : ""}
         </td>
       </tr>`;
@@ -2176,6 +2177,16 @@
       catch(err){ alert("Не получилось: " + err.message); b.disabled = false; b.textContent = "Сохранить"; }
     }));
     host.querySelectorAll("[data-modemfor]").forEach(x => x.addEventListener("click", e => e.stopPropagation()));
+    host.querySelectorAll("[data-codefor]").forEach(x => x.addEventListener("click", e => e.stopPropagation()));
+    host.querySelectorAll("[data-codesave]").forEach(b => b.addEventListener("click", async e => {
+      e.stopPropagation();
+      const inp = host.querySelector(`[data-codefor="${CSS.escape(b.dataset.codesave)}"]`), code = inp ? inp.value.trim() : "";
+      if(!code){ alert("Впишите код"); return; }
+      if(!confirm(`Задать код «${code}» для позиции:\n${b.dataset.codesave}?`)) return;
+      b.disabled = true; b.textContent = "…";
+      try{ await api("setItemCode", {name: b.dataset.codesave, code}); await syncAll(true); }
+      catch(err){ alert("Не получилось: " + err.message); b.disabled = false; b.textContent = "Сохранить код"; }
+    }));
     host.querySelectorAll("[data-hidekey]").forEach(b => b.addEventListener("click", e => {
       e.stopPropagation();
       setHiddenItems([{code: b.dataset.hidecode, name: b.dataset.hidename}], b.dataset.hideto === "1", b);
