@@ -1840,14 +1840,15 @@
   // Проверяем по порядку (антенна «4GGPRS» — раньше модемов), показываем в порядке STOCK_GROUP_ORDER
   const STOCK_GROUP_RULES = [
     ["water", /воды|водомер|водосч/i],
+    ["gas", /газ|СГ-G|диафрагмен/i],
     ["meter", /орман|дала|отан|сч[её]тчик\s*эл|электросч|СО-Э|СА4|САЗ|CAP3|CA4|СЭТ/i],
     ["ct", /трансформатор/i],
     ["cabinet", /ШУЭ|шкаф/i],
     ["antenna", /антенн/i],
     ["modem", /модем|модул|GPRS|SaiCom/i],
   ];
-  const STOCK_GROUP_ORDER = ["meter", "water", "ct", "cabinet", "antenna", "other", "modem"];
-  const STOCK_GROUP_TITLE = {meter: "Электросчётчики", water: "Счётчики воды", ct: "Трансформаторы тока", cabinet: "Шкафы учёта",
+  const STOCK_GROUP_ORDER = ["meter", "water", "gas", "ct", "cabinet", "antenna", "other", "modem"];
+  const STOCK_GROUP_TITLE = {meter: "Электросчётчики", water: "Счётчики воды", gas: "Счётчики газа", ct: "Трансформаторы тока", cabinet: "Шкафы учёта",
                              antenna: "Антенны", other: "Прочее", modem: "Модемы"};
   function stockGroupOf(r){
     const text = (r.name || "") + " " + (r.code || "");
