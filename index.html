@@ -2088,6 +2088,8 @@
     if(stockFilter === "instock") rows = rows.filter(r => av(r) > 0);
     if(stockFilter === "zero") rows = rows.filter(r => av(r) <= 0);
     if(stockFilter === "low")  rows = rows.filter(r => av(r) > 0 && av(r) < 10);
+    // «Все» — только то, что есть на складе: нули не светятся (они на вкладке «Нет в наличии» и находятся поиском)
+    if(stockFilter === "all" && !(document.getElementById("stockSearch").value || "").trim()) rows = rows.filter(r => av(r) > 0);
 
     const term = (document.getElementById("stockSearch").value||"").trim().toLowerCase();
     if(term) rows = rows.filter(r => r.code.toLowerCase().includes(term) || r.name.toLowerCase().includes(term));
