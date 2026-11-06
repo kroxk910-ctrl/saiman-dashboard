@@ -1169,7 +1169,7 @@
     <button class="tab-btn" data-view="adjustments" data-warehouse-only hidden>Корректировки <span class="count" id="adjCount">—</span></button>
     <button class="tab-btn" data-view="revision" data-warehouse-only hidden>Ревизия <span class="count" id="revCount">—</span></button>
     <button class="tab-btn" data-view="pricelist">Прайс-лист <span class="count" id="pricelistCount">—</span></button>
-    <button class="tab-btn" data-view="analytics" data-admin-only hidden>Аналитика</button>
+    <button class="tab-btn" data-view="analytics" data-analytics-tab hidden>Аналитика</button>
     <button class="tab-btn" data-view="finance" data-admin-only hidden>Финансы</button>
   </div>
 </div>
@@ -1357,6 +1357,7 @@
         <div class="toolbar-spacer"></div>
         <button type="button" class="small-btn" id="roCopy">📋 Скопировать заказ</button>
       </div>
+      <details class="sv-details"><summary>⚙ Настройки расчёта</summary>
       <div class="ro-params">
         <label>Поставка с завода <input type="number" id="roLead" min="0" max="365"> дн.</label>
         <label>Страховой запас <input type="number" id="roSafety" min="0" max="365"> дн.</label>
@@ -1364,6 +1365,7 @@
         <label>Спрос считать за <select id="roWindow"><option value="30">30 дн.</option><option value="60">60 дн.</option><option value="90">90 дн.</option></select></label>
         <label>Округлять до <select id="roRound"><option value="1">1</option><option value="5">5</option><option value="10">10</option><option value="50">50</option><option value="100">100</option></select> шт</label>
       </div>
+      </details>
       <div class="ro-note" id="roNote"></div>
       <div id="roHost"></div>
     </div>
@@ -1772,6 +1774,8 @@
   const isDirector = () => !!currentUser && currentUser.roleKey === "director";
   const seesAll = () => isWarehouse() || isDirector();
   const seesAnalytics = () => isAdmin() || isDirector();
+  const isProcurement = () => !!currentUser && currentUser.roleKey === "procurement";
+  const seesAnalyticsTab = () => seesAnalytics() || isProcurement();   // вкладка «Аналитика»; закупочные цены и финансы — только seesAnalytics
 
   function showMsg(el, text){ el.textContent = text; el.classList.add("show"); }
   function hideMsg(el){ el.textContent = ""; el.classList.remove("show"); }
@@ -3289,6 +3293,7 @@
   }
   const shownCode = code => stockIndex[code] ? stockIndex[code].label : (kitIndex[code] ? kitIndex[code].code : (rawCodeOf[code] || code));
   const nameOf = code => stockIndex[code] ? stockIndex[code].name : (kitIndex[code] ? kitIndex[code].name : (rawNameOf[code] || ""));
+  const isModemCode = code => stockGroupOf({name: nameOf(code), code: shownCode(code)}) === "modem";   // в аналитике модемы не показываем
 
   function analyticsData(){
     const includeDirect = document.getElementById("anDirect").checked;
@@ -3297,7 +3302,7 @@
     const from = anPeriod === "all" ? "" : keyPlusDays(today, -(Number(anPeriod) - 1));
     const secOf = sectionOfCode();
     const rows = demandEvents({includeDirect}).filter(x => !(from && x.key < from));
-    const list = section ? rows.filter(x => secOf[x.code] === section) : rows;
+    const list = (section ? rows.filter(x => secOf[x.code] === section) : rows).filter(x => !isModemCode(x.code));
     const byCode = {}, byMgr = {};
     list.forEach(x => {
       const c = byCode[x.code] || (byCode[x.code] = {code: x.code, qty: 0, ids: new Set()});
@@ -3337,7 +3342,7 @@
   }
 
   function renderAnalytics(){
-    if(!seesAnalytics()) return;
+    if(!seesAnalyticsTab()) return;
     renderReorder();
     const sel = document.getElementById("anSection");
     const secs = [...new Set(stockRows.filter(r => r.isSection).map(r => r.name))];
@@ -3449,7 +3454,7 @@
     const days = Math.max(7, Math.min(v.window, history || v.window));
     const out = [];
     Object.entries(demand).forEach(([code, d]) => {
-      if(hiddenKeys.has(code)) return;   // не на продажу — не рекомендуем
+      if(hiddenKeys.has(code) || isModemCode(code)) return;   // не на продажу и модемы — не рекомендуем
       const qty = d.ship + d.direct + d.sale + d.short;
       const rate = qty / days;
       if(!(rate > 0)) return;
@@ -3472,28 +3477,24 @@
   }
 
   function renderReorder(){
-    if(!seesAnalytics()) return;
+    if(!seesAnalyticsTab()) return;
     const p = reorderPlan(), host = document.getElementById("roHost"), note = document.getElementById("roNote");
     const v = p.settings;
     note.className = "ro-note" + (p.history && p.history < 14 ? " warn" : "");
     note.textContent = !p.history ? "Пока нет ни одной отгрузки — рекомендации появятся, когда начнутся отгрузки."
       : (p.history < 14 ? `⚠ История отгрузок пока ${p.history} дн. — рекомендации приблизительные. ` : "") +
-        `Спрос за ${p.days} дн. = ${salesPeriods.length ? "продажи из 1С (за загруженные периоды) + " : ""}отгрузки со склада + прямые с завода + то, чего не хватило менеджерам. Заказываем, если остатка не хватит на ${v.lead + v.safety} дн. (поставка ${v.lead} + запас ${v.safety}); количество — чтобы после поставки хватило на ${v.cover} дн.`;
+        `Расчёт по спросу за ${p.days} дн.`;
     if(!p.list.length){
       host.innerHTML = p.history ? `<div class="state-box" style="padding:18px"><div class="big">✅ Сейчас заказывать ничего не нужно</div><div>Всех ходовых позиций хватает дольше ${v.lead + v.safety} дн.</div></div>` : "";
       return;
     }
     const outDate = n => { const k = keyPlusDays(todayKey(), n); return shortDate(k); };
-    host.innerHTML = `<table class="ro-table"><thead><tr><th></th><th>Код</th><th>Наименование</th><th class="num">Расход/день</th><th class="num">Доступно</th><th>Закончится</th><th class="num">Заказать</th></tr></thead><tbody>${
+    host.innerHTML = `<table class="ro-table"><thead><tr><th></th><th>Код</th><th>Наименование</th><th class="num">Доступно</th><th class="num">Хватит на</th><th class="num">Заказать</th></tr></thead><tbody>${
       p.list.map(x => `<tr>
-        <td class="ro-pri ${x.urgent ? "urgent" : "soon"}">${x.urgent ? "🔴 срочно" : "🟡 пора"}</td>
-        <td class="code">${esc(x.shown)}</td><td class="name">${esc(x.name)}<div class="ro-src">${[
-          x.parts.sale ? `продано по 1С ${fmtNum(x.parts.sale)}` : "",
-          x.parts.ship ? `отгружено ${fmtNum(x.parts.ship)}` : "", x.parts.direct ? `с завода ${fmtNum(x.parts.direct)}` : "",
-          x.parts.short ? `<span class="ro-short">не хватило ${fmtNum(x.parts.short)}</span>` : ""].filter(Boolean).join(" · ")}</div></td>
-        <td class="num">${fmtNum(Math.round(x.rate * 10) / 10)}</td>
+        <td class="ro-pri ${x.urgent ? "urgent" : "soon"}">${x.urgent ? "🔴" : "🟡"}</td>
+        <td class="code">${esc(x.shown)}</td><td class="name">${esc(x.name)}</td>
         <td class="num">${fmtNum(x.avail)}</td>
-        <td>${x.avail <= 0 ? "уже нет" : `~через ${fmtNum(x.left)} дн. (${outDate(x.left)})`}</td>
+        <td class="num">${x.avail <= 0 ? "нет" : fmtNum(x.left) + " дн."}</td>
         <td class="num order">${fmtNum(x.order)} шт</td></tr>`).join("")
     }</tbody></table>`;
   }
@@ -4984,6 +4985,8 @@
     document.getElementById("requestsTabLabel").textContent = seesAll() ? "Заявки" : "Мои заявки";
     document.querySelectorAll("[data-warehouse-only]").forEach(el => { el.hidden = !seesAll(); });
     document.querySelectorAll("[data-admin-only]").forEach(el => { el.hidden = !seesAnalytics(); });
+    document.querySelectorAll("[data-analytics-tab]").forEach(el => { el.hidden = !seesAnalyticsTab(); });
+    document.getElementById("stockValueCard").style.display = seesAnalytics() ? "" : "none";   // закупочные цены видят только админ и руководитель
     document.getElementById("newReceiptBtn").hidden = !wh;
     document.getElementById("uploadStockBtn").hidden = !isAdmin();
     let cachedData = null;
