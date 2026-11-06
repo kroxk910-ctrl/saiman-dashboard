@@ -2565,12 +2565,17 @@
   }
   async function resolveDocAction(d, extra, btn){
     btn.disabled = true;
-    try{ await api("resolveDoc", Object.assign({key: d.key}, extra)); await syncAll(true); }
+    try{
+      const r = await api("resolveDoc", Object.assign({key: d.key}, extra));
+      if(r && r.partial && confirm(`Реализация №${d.short} привязана к заявке №${r.id}, но покрывает не всё: не хватает ${r.left}.\n\nОК — отметить заявку «реализация проведена» уже сейчас.\nОтмена — подождать: заявка отметится сама, когда придёт остальная реализация.`))
+        await api("resolveDoc", {key: d.key, id: r.id, full: true});
+      await syncAll(true);
+    }
     catch(err){ btn.disabled = false; alert("Не получилось: " + err.message); }
   }
-  let docShipDoc = null;
+  let docShipDoc = null, docShipForce = false;
   function openDocShip(d){
-    docShipDoc = d;
+    docShipDoc = d; docShipForce = false;
     document.getElementById("docShipTitle").textContent = `Реализация №${d.short} от ${d.date}`;
     document.getElementById("docShipItems").innerHTML = d.items.map(it => `<b>${esc(it.code || it.name)}</b> × ${fmtNum(it.qty)}`).join(", ");
     const sel = document.getElementById("docShipManager");
@@ -2590,10 +2595,17 @@
     if(!client){ showMsg(err, "Укажите, кому отгрузили"); return; }
     sub.disabled = true; sub.textContent = "Записываю…";
     try{
-      const res = await api("recordDocShipment", {key: d.key, manager, client, comment: document.getElementById("docShipComment").value.trim()});
+      const res = await api("recordDocShipment", {key: d.key, manager, client, comment: document.getElementById("docShipComment").value.trim(), force: docShipForce});
       showMsg(ok, `Записано: заявка №${res.id}. Обновляю данные…`); sub.textContent = "Готово ✓";
       setTimeout(() => { closeOverlay(document.getElementById("docShipModalOverlay")); syncAll(true); }, 600);
-    }catch(e){ showMsg(err, e.message); sub.disabled = false; sub.textContent = "Записать отгрузку"; }
+    }catch(e){
+      sub.disabled = false;
+      if(/^Похоже, это заявка/.test(e.message) && !docShipForce){   // часть уже записанной отгрузки — не плодим дубль
+        docShipForce = true;
+        showMsg(err, e.message + " Если это всё-таки отдельная отгрузка — нажмите «Записать всё равно».");
+        sub.textContent = "Записать всё равно";
+      } else { showMsg(err, e.message); sub.textContent = docShipForce ? "Записать всё равно" : "Записать отгрузку"; }
+    }
   });
 
   // ---------- Отмечено по 1С автоматически (последние 7 дней) ----------
