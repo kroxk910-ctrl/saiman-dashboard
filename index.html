@@ -1353,10 +1353,11 @@
     <div class="ro-note" id="anSource"></div>
     <div class="an-card ro-card">
       <div class="ro-head">
-        <div class="an-title" style="margin:0">🛒 Рекомендация к заказу на заводе</div>
+        <div class="an-title" id="roToggle" role="button" tabindex="0" style="margin:0;cursor:pointer;user-select:none" title="Развернуть / свернуть список"><span id="roArrow">▸</span> 🛒 Рекомендация к заказу на заводе <span id="roCount" style="opacity:.7;font-weight:400"></span></div>
         <div class="toolbar-spacer"></div>
         <button type="button" class="small-btn" id="roCopy">📋 Скопировать заказ</button>
       </div>
+      <div id="roBody" hidden>
       <details class="sv-details"><summary>⚙ Настройки расчёта</summary>
       <div class="ro-params">
         <label>Поставка с завода <input type="number" id="roLead" min="0" max="365"> дн.</label>
@@ -1368,6 +1369,7 @@
       </details>
       <div class="ro-note" id="roNote"></div>
       <div id="roHost"></div>
+      </div>
     </div>
 
     <div class="an-grid">
@@ -3480,6 +3482,8 @@
     if(!seesAnalyticsTab()) return;
     const p = reorderPlan(), host = document.getElementById("roHost"), note = document.getElementById("roNote");
     const v = p.settings;
+    const urg = p.list.filter(x => x.urgent).length;
+    document.getElementById("roCount").textContent = p.list.length ? `· ${p.list.length} поз.` + (urg ? `, срочно: ${urg}` : "") : (p.history ? "· заказывать нечего" : "");
     note.className = "ro-note" + (p.history && p.history < 14 ? " warn" : "");
     note.textContent = !p.history ? "Пока нет ни одной отгрузки — рекомендации появятся, когда начнутся отгрузки."
       : (p.history < 14 ? `⚠ История отгрузок пока ${p.history} дн. — рекомендации приблизительные. ` : "") +
@@ -3498,6 +3502,15 @@
         <td class="num order">${fmtNum(x.order)} шт</td></tr>`).join("")
     }</tbody></table>`;
   }
+
+  (function(){
+    const t = document.getElementById("roToggle"), b = document.getElementById("roBody"), a = document.getElementById("roArrow");
+    const set = open => { b.hidden = !open; a.textContent = open ? "▾" : "▸"; };
+    set(false);
+    const flip = () => set(b.hidden);
+    t.addEventListener("click", flip);
+    t.addEventListener("keydown", e => { if(e.key === "Enter" || e.key === " "){ e.preventDefault(); flip(); } });
+  })();
 
   document.getElementById("roCopy").addEventListener("click", async () => {
     const p = reorderPlan();
