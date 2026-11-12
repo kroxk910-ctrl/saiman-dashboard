@@ -1741,6 +1741,9 @@
   // как на сервере: в кодах с латиницей похожие русские буквы = латинские («LР» из 1С = «LP»)
   const LOOKALIKE = {"А":"A","В":"B","С":"C","Е":"E","Н":"H","К":"K","М":"M","О":"O","Р":"P","Т":"T","Х":"X","У":"Y"};
   function normCode(v){ const s = String(v ?? "").trim().toUpperCase(); return /[A-Z]/.test(s) ? s.replace(/[АВСЕНКМОРТХУ]/g, ch => LOOKALIKE[ch]) : s; }
+  // поиск: «LP» находит и «LР» с русской Р (и наоборот) — похожие буквы сравниваем как одну
+  const SFOLD = {"а":"a","в":"b","с":"c","е":"e","н":"h","к":"k","м":"m","о":"o","р":"p","т":"t","х":"x","у":"y"};
+  function sfold(v){ return String(v ?? "").toLowerCase().replace(/[авсенкмортху]/g, ch => SFOLD[ch]); }
 
   // "дд.мм.гггг" (или "гггг-мм-дд") → "гггг-мм-дд"; "" если не дата
   function dateKey(s){
@@ -2098,7 +2101,7 @@
     if(stockFilter === "all" && !(document.getElementById("stockSearch").value || "").trim()) rows = rows.filter(r => av(r) > 0);
 
     const term = (document.getElementById("stockSearch").value||"").trim().toLowerCase();
-    if(term) rows = rows.filter(r => r.code.toLowerCase().includes(term) || r.name.toLowerCase().includes(term));
+    if(term) rows = rows.filter(r => sfold(r.code).includes(sfold(term)) || sfold(r.name).includes(sfold(term)));
 
     let grouped = false;
     if(stockSort.key){
@@ -2323,9 +2326,9 @@
     const term = (document.getElementById("requestsSearch").value||"").trim().toLowerCase();
     if(term) rows = rows.filter(r =>
       String(r.id) === term.replace("№","") ||
-      r.manager.toLowerCase().includes(term) ||
-      r.comment.toLowerCase().includes(term) ||
-      (r.lines || r.items).concat(r.items).some(it => it.code.toLowerCase().includes(term))
+      sfold(r.manager).includes(sfold(term)) ||
+      sfold(r.comment).includes(sfold(term)) ||
+      (r.lines || r.items).concat(r.items).some(it => sfold(it.code).includes(sfold(term)))
     );
 
     rows.sort((a,b)=>{
@@ -2670,8 +2673,8 @@
     let rows = source.slice().sort((a,b)=> a.id - b.id);
     const term = (document.getElementById("unrealizedSearch").value||"").trim().toLowerCase();
     if(term) rows = rows.filter(r =>
-      String(r.id) === term.replace("№","") || r.manager.toLowerCase().includes(term) ||
-      r.comment.toLowerCase().includes(term) || r.items.some(it => it.code.toLowerCase().includes(term)));
+      String(r.id) === term.replace("№","") || sfold(r.manager).includes(sfold(term)) ||
+      sfold(r.comment).includes(sfold(term)) || r.items.some(it => sfold(it.code).includes(sfold(term))));
 
     document.getElementById("unrealizedRowCount").textContent = `${rows.length} из ${source.length}`;
     const host = document.getElementById("unrealizedTableHost");
@@ -2794,7 +2797,7 @@
   function renderReceipts(){
     let rows = receiptRows.slice().sort((a,b)=> b.sheetRow - a.sheetRow);
     const term = (document.getElementById("receiptsSearch").value||"").trim().toLowerCase();
-    if(term) rows = rows.filter(r => r.code.toLowerCase().includes(term) || r.comment.toLowerCase().includes(term) || r.who.toLowerCase().includes(term));
+    if(term) rows = rows.filter(r => sfold(r.code).includes(sfold(term)) || sfold(r.comment).includes(sfold(term)) || sfold(r.who).includes(sfold(term)));
 
     document.getElementById("receiptsRowCount").textContent = `${rows.length} из ${receiptRows.length}`;
     const host = document.getElementById("receiptsTableHost");
@@ -2880,7 +2883,7 @@
     let list = rev ? rows : rows.filter(r => byKey[normCode(r.key)]);
     if(revFilter === "todo") list = list.filter(r => !byKey[normCode(r.key)]);
     if(revFilter === "diff") list = list.filter(r => byKey[normCode(r.key)] && byKey[normCode(r.key)].diff);
-    if(term) list = list.filter(r => r.code.toLowerCase().includes(term) || r.name.toLowerCase().includes(term));
+    if(term) list = list.filter(r => sfold(r.code).includes(sfold(term)) || sfold(r.name).includes(sfold(term)));
     if(!rev) list = list.slice().sort((a, b) => Math.abs(byKey[normCode(b.key)].diff) - Math.abs(byKey[normCode(a.key)].diff));
     document.getElementById("revRowCount").textContent = `${list.length} из ${rev ? rows.length : counts.length}`;
     if(!list.length){ host.innerHTML = `<div class="state-box"><div class="big">${revFilter === "todo" ? "Всё посчитано 👍" : revFilter === "diff" ? "Расхождений нет ✓" : "Ничего не найдено"}</div></div>`; return; }
@@ -2990,7 +2993,7 @@
     document.getElementById("newAdjBtn").hidden = !isWarehouse();
     const term = (document.getElementById("adjSearch").value || "").trim().toLowerCase();
     let list = adjFilter === "open" ? open : groups;
-    if(term) list = list.filter(g => g.parts.some(p => p.code.toLowerCase().includes(term)) || g.comment.toLowerCase().includes(term) || g.by.toLowerCase().includes(term));
+    if(term) list = list.filter(g => g.parts.some(p => sfold(p.code).includes(sfold(term))) || sfold(g.comment).includes(sfold(term)) || sfold(g.by).includes(sfold(term)));
     document.getElementById("adjRowCount").textContent = `${list.length} из ${adjFilter === "open" ? open.length : groups.length}`;
     const host = document.getElementById("adjTableHost");
     if(!list.length){
@@ -3057,7 +3060,7 @@
   function renderPricelist(){
     let rows = pricelistRows.slice();
     const term = (document.getElementById("pricelistSearch").value||"").trim().toLowerCase();
-    if(term) rows = rows.filter(r => r.code.toLowerCase().includes(term) || r.name.toLowerCase().includes(term));
+    if(term) rows = rows.filter(r => sfold(r.code).includes(sfold(term)) || sfold(r.name).includes(sfold(term)));
     if(pricelistSort.key){
       rows.sort((a,b)=>{
         const x = (a[pricelistSort.key]||"").toLowerCase(), y = (b[pricelistSort.key]||"").toLowerCase();
