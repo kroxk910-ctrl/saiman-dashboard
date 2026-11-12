@@ -872,13 +872,28 @@
   .idm-breakdown{font-size:14px; color:var(--ink-faint); margin-top:8px; line-height:1.6;}
   .idm-breakdown b{color:var(--ink-dim); font-weight:600; font-family:var(--mono);}
 
+  /* счётчики на кнопках-фильтрах (вместо отдельных плашек со статистикой) */
+  .filter-chip .cc{margin-left:6px; font-weight:600; color:var(--ink-faint);}
+  .filter-chip.active .cc{color:inherit;}
+  .filter-chip .cc:empty{display:none;}
+  .sync-pill{cursor:pointer;}
+  @media (min-width:721px){
+    #refreshBtn{display:none;}
+    /* везде одинаково: 1-я строка — поиск … сводка и главная кнопка раздела, 2-я — фильтры */
+    .toolbar .filter-chip{order:5;}
+    .toolbar:has(.filter-chip)::after{content:""; order:4; flex-basis:100%; height:0;}
+  }
+  .app-title{display:none;}
+
   /* ======================= ПРИЛОЖЕНИЕ (Android): главная, разделы, нижняя панель =======================
      Мотив — счётный механизм электросчётчика: главное число на главной показано «барабаном» из ячеек. */
   .app-only{display:none !important;}
   html.app .app-only:not(.view){display:revert !important;}
   html.app .view.app-only.active{display:block !important;}
   html.app .tabs{display:none;}
-  html.app #logoutBtnM{display:none !important;}
+  html.app #logoutBtnM, html.app .user-pill, html.app #tgBtn, html.app #themeBtn{display:none !important;}
+  html.app .app-title{display:block; font-family:var(--cond); font-weight:600; font-size:20px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  html.app .brand-mark{display:none;}
   html.app main{padding-bottom:calc(92px + env(safe-area-inset-bottom));}
   html.app footer{padding-bottom:calc(88px + env(safe-area-inset-bottom));}
   html.app .toast-stack{bottom:calc(84px + env(safe-area-inset-bottom));}
@@ -1234,6 +1249,7 @@
   <div class="topbar-inner">
     <div class="brand">
       <span class="brand-mark">QMT</span>
+      <span class="app-title" id="appTitle"></span>
       <span class="user-pill"><span id="userPill"></span><span class="role-tag" id="rolePill"></span></span>
       <button class="refresh-btn" id="logoutBtn">Выйти</button>
     </div>
@@ -1279,7 +1295,7 @@
   <!-- ============ STOCK VIEW ============ -->
   <section class="view active" id="view-stock">
     <div class="snapshot-bar" id="snapshotBar"></div>
-    <div class="stats" id="stockStats">
+    <div class="stats" id="stockStats" hidden>
       <div class="stat"><div class="stat-label">Позиций</div><div class="stat-value" id="stStatTotal">—</div></div>
       <div class="stat"><div class="stat-label">Нет в наличии</div><div class="stat-value warn" id="stStatZero">—</div></div>
       <div class="stat"><div class="stat-label">В заявках, шт</div><div class="stat-value warn" id="stStatHeld">—</div></div>
@@ -1288,10 +1304,9 @@
 
     <div class="toolbar">
       <div class="search-box"><input type="text" id="stockSearch" placeholder="Поиск по коду или наименованию…"></div>
-      <button class="filter-chip active" data-stockfilter="all">Все</button>
-      <button class="filter-chip" data-stockfilter="instock">В наличии</button>
+      <button class="filter-chip active" data-stockfilter="all" title="Всё, что есть на складе. Поиск ищет и среди нулевых">В наличии</button>
       <button class="filter-chip" data-stockfilter="zero">Нет в наличии</button>
-      <button class="filter-chip" data-stockfilter="low">Мало (&lt;10)</button>
+      <button class="filter-chip" data-stockfilter="low" title="Доступно меньше 10 шт">Мало</button>
       <button class="filter-chip" data-stockfilter="hidden" id="stockHiddenChip" hidden title="Позиции не на продажу — менеджеры и бот их не видят">🙈 Скрытые <span id="stockHiddenCount">0</span></button>
       <div class="toolbar-spacer"></div>
       <span class="row-count" id="stockRowCount"></span>
@@ -1313,7 +1328,7 @@
 
   <!-- ============ REQUESTS VIEW ============ -->
   <section class="view" id="view-requests">
-    <div class="stats" id="requestsStats">
+    <div class="stats" id="requestsStats" hidden>
       <div class="stat"><div class="stat-label">В работе</div><div class="stat-value" id="rqStatActive">—</div></div>
       <div class="stat"><div class="stat-label">Новые</div><div class="stat-value warn" id="rqStatNew">—</div></div>
       <div class="stat"><div class="stat-label">Готовы к отгрузке</div><div class="stat-value accent" id="rqStatReady">—</div></div>
@@ -1346,7 +1361,7 @@
   <section class="view" id="view-unrealized">
     <div id="docs1cHost"></div>
     <div id="autoRealHost"></div>
-    <p class="view-note">Заявки, по которым менеджер указал, что реализация в 1С <b>не проведена</b>. Когда реализацию провели — нажми «Реализация проведена», и заявка уйдёт из списка.</p>
+    <p class="view-note">Заявки, по которым менеджер указал, что реализация в 1С <b>не проведена</b>. Когда реализацию провели — нажмите «Реализация проведена», и заявка уйдёт из списка.</p>
     <div class="toolbar">
       <div class="search-box"><input type="text" id="unrealizedSearch" placeholder="Поиск по №, коду, менеджеру…"></div>
       <div class="toolbar-spacer"></div>
@@ -1361,7 +1376,7 @@
 
   <!-- ============ RECEIPTS VIEW (warehouse) ============ -->
   <section class="view" id="view-receipts">
-    <div class="stats" id="receiptsStats">
+    <div class="stats" id="receiptsStats" hidden>
       <div class="stat"><div class="stat-label">Ждут накладную</div><div class="stat-value" id="rcStatCount">—</div></div>
       <div class="stat"><div class="stat-label">Без накладной, шт</div><div class="stat-value ok" id="rcStatQty">—</div></div>
       <div class="stat"><div class="stat-label">Позиций</div><div class="stat-value" id="rcStatCodes">—</div></div>
@@ -1529,7 +1544,7 @@
 
   <!-- ============ PRICELIST VIEW ============ -->
   <section class="view" id="view-pricelist">
-    <div class="stats" id="pricelistStats">
+    <div class="stats" id="pricelistStats" hidden>
       <div class="stat"><div class="stat-label">Позиций</div><div class="stat-value" id="plStatTotal">—</div></div>
     </div>
 
@@ -1775,7 +1790,7 @@
   </div>
 </div>
 
-<footer>
+<footer hidden>
   Данные из Google Sheets · автообновление каждую минуту · последнее обновление: <span id="footTime">—</span><span id="footSpeed"></span>
 </footer>
 
@@ -2219,7 +2234,7 @@
       grouped = true;
     }
 
-    document.getElementById("stockRowCount").textContent = `${rows.length} из ${stockRows.filter(r=>!r.isSection && (stockFilter === "hidden" ? isHiddenRow(r) : !isHiddenRow(r))).length}`;
+    setRowInfo("stockRowCount", "stockSearch", rows.length, stockSummary);
     const host = document.getElementById("stockTableHost");
     if(rows.length === 0){
       host.innerHTML = stockFilter === "hidden"
@@ -2338,6 +2353,18 @@
     setHiddenItems(items.map(r => ({code: r.code, name: r.name})), true, document.getElementById("hideSectionBtn"));
   });
 
+  function chipCount(sel, n){
+    const c = document.querySelector(sel); if(!c) return;
+    let el = c.querySelector(".cc");
+    if(!el){ el = document.createElement("span"); el.className = "cc"; c.appendChild(el); }
+    el.textContent = n ? fmtNum(n) : "";
+  }
+  // справа в строке фильтров: при поиске — сколько найдено, иначе — короткая сводка раздела
+  function setRowInfo(id, searchId, shown, summary){
+    const term = (document.getElementById(searchId).value || "").trim();
+    document.getElementById(id).textContent = term ? `найдено: ${fmtNum(shown)}` : (summary || "");
+  }
+  let stockSummary = "", receiptsSummary = "";
   function renderStockStats(){
     const data = stockRows.filter(r => !r.isSection && !isHiddenRow(r));
     let zero = 0, held = 0, sum = 0;
@@ -2352,6 +2379,11 @@
     document.getElementById("stStatHeld").textContent = fmtNum(held);
     document.getElementById("stStatSum").textContent = fmtNum(sum);
     document.getElementById("stockCount").textContent = data.length;
+    const avl = r => ((r.key && availMap[normCode(r.key)]) || {available: r.qty}).available;
+    chipCount('[data-stockfilter="all"]', data.filter(r => avl(r) > 0).length);
+    chipCount('[data-stockfilter="zero"]', zero);
+    chipCount('[data-stockfilter="low"]', data.filter(r => avl(r) > 0 && avl(r) < 10).length);
+    stockSummary = `доступно ${fmtNum(sum)} шт, в заявках ${fmtNum(held)} шт`;
   }
 
   /** Позиции для подсказок кода: без скрытых, в порядке остатков (электросчётчики → … → модемы, внутри — ходовые). */
@@ -2463,7 +2495,7 @@
       return b.id - a.id;
     });
 
-    document.getElementById("requestsRowCount").textContent = `${rows.length} из ${source.length}`;
+    setRowInfo("requestsRowCount", "requestsSearch", rows.length, "");
     const host = document.getElementById("requestsTableHost");
     if(opsError && !requestRows.length){ host.innerHTML = opsErrorBox(); wireRetry(host); return; }
     if(rows.length === 0){
@@ -2525,6 +2557,8 @@
     document.getElementById("rqStatReady").textContent = src.filter(r => r.status === ST_READY).length;
     document.getElementById("rqStatShipped").textContent = src.filter(r => r.status === ST_SHIPPED && dateKey(r.shipDate) === tk).length;
     document.getElementById("requestsCount").textContent = src.filter(r => HOLD_STATUSES.includes(r.status)).length;
+    chipCount('[data-reqfilter="active"]', src.filter(r => HOLD_STATUSES.includes(r.status)).length);
+    [ST_NEW, ST_PREP, ST_READY, ST_SHIPPED, ST_DIRECT, ST_CANCELLED].forEach(st => chipCount(`[data-reqfilter="${st}"]`, src.filter(r => r.status === st).length));
   }
 
   // ---------- Status menu ----------
@@ -2660,7 +2694,7 @@
 
   async function removeRequest(req, btn){
     const label = linesText(req);
-    if(!confirm(`Удалить заявку №${req.id} насовсем?\n${label}\n\nЕсли заявку просто не нужно выполнять — лучше поставь «${ST_CANCELLED}».`)) return;
+    if(!confirm(`Удалить заявку №${req.id} насовсем?\n${label}\n\nЕсли заявку просто не нужно выполнять — лучше поставьте «${ST_CANCELLED}».`)) return;
     await runOptimistic(req.id, {del: true}, () => api("deleteRequest", {id: req.id}), "Не удалось удалить заявку: ");
   }
 
@@ -2826,7 +2860,7 @@
       String(r.id) === term.replace("№","") || sfold(r.manager).includes(sfold(term)) ||
       sfold(r.comment).includes(sfold(term)) || r.items.some(it => sfold(it.code).includes(sfold(term))));
 
-    document.getElementById("unrealizedRowCount").textContent = `${rows.length} из ${source.length}`;
+    setRowInfo("unrealizedRowCount", "unrealizedSearch", rows.length, "");
     const host = document.getElementById("unrealizedTableHost");
     if(opsError && !requestRows.length){ host.innerHTML = opsErrorBox(); wireRetry(host); return; }
     if(rows.length === 0){
@@ -2948,7 +2982,7 @@
     const term = (document.getElementById("receiptsSearch").value||"").trim().toLowerCase();
     if(term) rows = rows.filter(r => sfold(r.code).includes(sfold(term)) || sfold(r.comment).includes(sfold(term)) || sfold(r.who).includes(sfold(term)));
 
-    document.getElementById("receiptsRowCount").textContent = `${rows.length} из ${receiptRows.length}`;
+    setRowInfo("receiptsRowCount", "receiptsSearch", rows.length, receiptsSummary);
     const host = document.getElementById("receiptsTableHost");
     if(opsError && !receiptRows.length){ host.innerHTML = opsErrorBox(); wireRetry(host); return; }
     if(rows.length === 0){
@@ -3190,6 +3224,7 @@
     document.getElementById("rcStatCodes").textContent = new Set(counted.map(r=>r.codeKey)).size;
     document.getElementById("rcStatAll").textContent = receiptRows.length;
     document.getElementById("receiptsCount").textContent = counted.length;
+    receiptsSummary = counted.length ? `ждут накладную: ${counted.length} (${fmtNum(counted.reduce((a,r)=>a+r.qty, 0))} шт)` : "";
   }
 
   async function removeReceipt(rc, btn){
@@ -3216,7 +3251,7 @@
         return x < y ? -pricelistSort.dir : x > y ? pricelistSort.dir : 0;
       });
     }
-    document.getElementById("pricelistRowCount").textContent = `${rows.length} из ${pricelistRows.length}`;
+    setRowInfo("pricelistRowCount", "pricelistSearch", rows.length, "");
     const host = document.getElementById("pricelistTableHost");
     if(rows.length === 0){
       host.innerHTML = `<div class="state-box"><div class="big">Ничего не найдено</div><div>Попробуй изменить поиск</div></div>`;
@@ -3697,7 +3732,7 @@
     if(!pdfjsPromise) pdfjsPromise = new Promise((resolve, reject) => {
       const sc = document.createElement("script"); sc.src = PDFJS_URL;
       sc.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER; resolve(window.pdfjsLib); };
-      sc.onerror = () => { pdfjsPromise = null; reject(new Error("не загрузилась библиотека чтения PDF — проверь интернет")); };
+      sc.onerror = () => { pdfjsPromise = null; reject(new Error("не загрузилась библиотека чтения PDF — проверьте интернет")); };
       document.head.appendChild(sc);
     });
     return pdfjsPromise;
@@ -4141,7 +4176,8 @@
       notifyAll(pendingEvents); pendingEvents = [];
       document.getElementById("footTime").textContent = new Date().toLocaleTimeString("ru-RU");
       if(lastLoadMs) document.getElementById("footSpeed").textContent = ` · ответ сервера ${(lastLoadMs / 1000).toFixed(1).replace(".", ",")} с${lastSource === "mirror" ? " (быстрое зеркало)" : DATA_MIRROR_URL ? " (Google)" : ""}`;
-      setSyncState(opsError ? "error" : "ok", opsError ? "Заявки не загрузились" : "Данные актуальны");
+      setSyncState(opsError ? "error" : "ok", opsError ? "Заявки не загрузились" : "Обновлено в " + new Date().toLocaleTimeString("ru-RU", {hour: "2-digit", minute: "2-digit"}));
+      document.getElementById("syncPill").title = "Нажмите, чтобы обновить. Автообновление каждую минуту" + document.getElementById("footSpeed").textContent;
     }catch(err){
       console.error(err);
       setSyncState("error", "Ошибка обновления");
@@ -4185,6 +4221,7 @@
     });
   });
   document.getElementById("refreshBtn").addEventListener("click", ()=>syncAll(true));
+  document.getElementById("syncPill").addEventListener("click", ()=>syncAll(true));
 
   document.getElementById("stockSearch").addEventListener("input", renderStock);
   document.getElementById("requestsSearch").addEventListener("input", renderRequests);
@@ -4403,7 +4440,7 @@
     }
     // Проверка до отправки; сервер всё равно проверит ещё раз
     function validate(){
-      if(opsError) return "Сейчас не загружаются заявки (" + opsError + "). Нажми «Обновить» и попробуй снова.";
+      if(opsError) return "Сейчас не загружаются заявки (" + opsError + "). Нажмите «Обновить» и попробуйте снова.";
       const items = collect();
       if(!items.length) return "Добавьте хотя бы одну позицию";
       const totals = {};
@@ -4646,9 +4683,9 @@
       if(!cm.value.trim() || /^Счёт .* №/.test(cm.value.trim())) cm.value = res.tag;
       const miss = res.items.filter(it => !it.code).length;
       const head = `${res.tag}${res.date ? " от " + res.date : ""}: позиций ${res.items.length}`;
-      if(res.dup) supStatus(`⚠ По этому счёту приход уже внесён (${res.dup.date}, ${res.dup.who}). Проверь, не дубль ли.`, "bad");
-      else if(miss) supStatus(`${head}, не узнал ${miss} — выбери код у строк ниже (запомню на будущее)`, "bad");
-      else supStatus(`${head} — все узнал ✓ Проверь и нажми «Внести приход»`, "ok");
+      if(res.dup) supStatus(`⚠ По этому счёту приход уже внесён (${res.dup.date}, ${res.dup.who}). Проверьте, не дубль ли.`, "bad");
+      else if(miss) supStatus(`${head}, не узнал ${miss} — выберите код у строк ниже (запомню на будущее)`, "bad");
+      else supStatus(`${head} — все узнал ✓ Проверьте и нажмите «Внести приход»`, "ok");
     }catch(err){
       supStatus("Не получилось: " + err.message, "bad");
     }finally{ btn.disabled = false; }
@@ -4981,9 +5018,9 @@
     tgCode = String(Math.floor(100000 + Math.random() * 900000));
     const link = tgBot ? `https://t.me/${encodeURIComponent(tgBot)}?start=${tgCode}` : "";
     tgBody.innerHTML = `<ol class="tg-steps">
-        <li>Нажми <b>«Открыть бота»</b> — откроется Telegram.</li>
-        <li>В Telegram нажми <b>«Запустить»</b> (Start).</li>
-        <li>Вернись сюда и нажми <b>«Проверить»</b>.</li>
+        <li>Нажмите <b>«Открыть бота»</b> — откроется Telegram.</li>
+        <li>В Telegram нажмите <b>«Запустить»</b> (Start).</li>
+        <li>Вернитесь сюда и нажмите <b>«Проверить»</b>.</li>
       </ol>
       <p class="modal-note">Будут приходить ${tgWhat()}.</p>
       ${link ? `<a class="modal-btn submit" href="${link}" target="_blank" rel="noopener" id="tgOpen">Открыть бота</a>`
@@ -5008,7 +5045,7 @@
     renderBrowserNotif();
     renderTg("loading");
     const r = await refreshTgStatus();
-    if(!r){ renderTg("form"); showMsg(tgError, "Не удалось связаться с сервером. Нажми «Обновить» и попробуй снова."); return; }
+    if(!r){ renderTg("form"); showMsg(tgError, "Не удалось связаться с сервером. Нажмите «Обновить» и попробуйте снова."); return; }
     renderTg(r.linked ? "linked" : "form");
   }
 
@@ -5174,7 +5211,7 @@
     host.innerHTML = `
       <div class="notif-row"><span>Карточки внизу экрана</span><span class="ok">всегда включены ✓</span></div>
       <div class="notif-row"><span>Уведомления Windows, когда вкладка свёрнута</span>${sys}</div>
-      ${perm === "denied" ? `<p class="modal-note" style="margin:-4px 0 10px">Чтобы включить: нажми на значок слева от адреса сайта → «Уведомления» → «Разрешить», затем обнови страницу.</p>` : ""}
+      ${perm === "denied" ? `<p class="modal-note" style="margin:-4px 0 10px">Чтобы включить: нажмите на значок слева от адреса сайта → «Уведомления» → «Разрешить», затем обновите страницу.</p>` : ""}
       <div class="notif-row"><span>Звуковой сигнал</span>
         <label class="reserve-checkbox-label" style="cursor:pointer"><input type="checkbox" id="bnSound" ${soundOn() ? "checked" : ""} style="accent-color:var(--accent)"> вкл.</label></div>
       <div class="notif-row"><span></span><button class="small-btn" id="bnTest">Показать пример</button></div>`;
@@ -5333,6 +5370,8 @@
     document.getElementById("secLogout").addEventListener("click", () => { if(confirm("Выйти из дашборда?")) document.getElementById("logoutBtn").click(); });
   }
   function syncAppNav(view){
+    const tb = document.querySelector(`.tab-btn[data-view="${view}"]`);
+    if(tb){ const t = tb.cloneNode(true); t.querySelectorAll(".count").forEach(x => x.remove()); document.getElementById("appTitle").textContent = t.textContent.trim(); }
     const on = ["home", "requests", "stock"].includes(view) ? view : "sections";
     document.querySelectorAll("#appNav [data-nav]").forEach(b => b.classList.toggle("on", b.dataset.nav === on));
     if(view === "sections") renderSections();
