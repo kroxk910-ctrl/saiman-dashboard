@@ -4994,6 +4994,10 @@
   }
 
   function systemNotify(ev){
+    if(window.QmtApp){   // Android-приложение: уведомление в шторке телефона, когда приложение свёрнуто
+      try{ if(document.hidden) window.QmtApp.notify(ev.title, ev.body || "", ev.view || "requests"); }catch(e){ /* ignore */ }
+      return;
+    }
     try{
       if(!("Notification" in window) || Notification.permission !== "granted" || !document.hidden) return;
       const n = new Notification(ev.title, {body: ev.body || "", tag: ev.tag || ev.title});
@@ -5059,6 +5063,7 @@
 
   function renderBrowserNotif(){
     const host = document.getElementById("browserNotifBody");
+    if(window.QmtApp){ renderAppNotif(host); return; }
     const supported = "Notification" in window;
     const perm = supported ? Notification.permission : "unsupported";
     let sys;
@@ -5084,6 +5089,41 @@
       try{ if("Notification" in window && Notification.permission === "granted") new Notification(ev.title, {body: ev.body}); }catch(e){ /* ignore */ }
     });
   }
+
+  // ---------- Android-приложение (window.QmtApp) ----------
+  function renderAppNotif(host){
+    const app = window.QmtApp;
+    let perm = "default", bg = true;
+    try{ perm = app.notifState(); bg = app.bgEnabled(); }catch(e){ /* ignore */ }
+    const sys = perm === "granted" ? `<span class="ok">включены ✓</span>`
+      : `<button class="small-btn" id="anEnable">${perm === "denied" ? "Открыть настройки" : "Включить"}</button>`;
+    host.innerHTML = `
+      <div class="notif-row"><span>Карточки внизу экрана</span><span class="ok">всегда включены ✓</span></div>
+      <div class="notif-row"><span>Уведомления на телефоне, когда приложение свёрнуто</span>${sys}</div>
+      ${perm === "denied" ? `<p class="modal-note" style="margin:-4px 0 10px">Уведомления запрещены в настройках телефона — нажмите «Открыть настройки» и разрешите их.</p>` : ""}
+      <div class="notif-row"><span>Следить за заявками в фоне<br><small class="dash">значок в шторке; без него телефон может «усыпить» приложение</small></span>
+        <label class="reserve-checkbox-label" style="cursor:pointer"><input type="checkbox" id="anBg" ${bg ? "checked" : ""} style="accent-color:var(--accent)"> вкл.</label></div>
+      <div class="notif-row"><span>Звуковой сигнал</span>
+        <label class="reserve-checkbox-label" style="cursor:pointer"><input type="checkbox" id="bnSound" ${soundOn() ? "checked" : ""} style="accent-color:var(--accent)"> вкл.</label></div>
+      <div class="notif-row"><span></span><button class="small-btn" id="bnTest">Показать пример</button></div>`;
+    document.getElementById("anEnable")?.addEventListener("click", ()=>{ try{ app.requestNotif(); }catch(e){ /* ignore */ } });
+    document.getElementById("anBg").addEventListener("change", e => { try{ app.setBg(e.target.checked); }catch(err){ /* ignore */ } });
+    document.getElementById("bnSound").addEventListener("change", e => setSound(e.target.checked));
+    document.getElementById("bnTest").addEventListener("click", ()=>{
+      const ev = {title: "🔔 Так будут выглядеть уведомления", body: isWarehouse() ? "Например: «🆕 Новая заявка №12 — Алия: CI × 20»" : "Например: «Заявка №12: Готова к отгрузке»", kind: "ok"};
+      showToast(ev); beep();
+      try{ app.notify(ev.title, ev.body, "requests"); }catch(e){ /* ignore */ }
+    });
+  }
+  window.qmtAppChanged = () => { if(document.getElementById("browserNotifBody")) renderBrowserNotif(); };
+  window.qmtOpenTab = view => { document.querySelectorAll(".modal-overlay.open").forEach(closeOverlay); openTab(view); };
+  // кнопка «Назад» на телефоне: сначала закрывает открытое меню или окно
+  window.qmtBack = () => {
+    if(statusMenuEl){ closeStatusMenu(); return true; }
+    const open = [...document.querySelectorAll(".modal-overlay.open")];
+    if(open.length){ closeOverlay(open[open.length - 1]); return true; }
+    return false;
+  };
 
   // ---------- Auth ----------
   const PIN_LENGTH = 4;

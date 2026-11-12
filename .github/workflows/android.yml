@@ -1,0 +1,63 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    paths: ['android/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Ключ подписи
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "KEYSTORE_PASSWORD=$KS_PASS" >> "$GITHUB_ENV"
+            echo "SIGNED=1" >> "$GITHUB_ENV"
+          else
+            # секрета ещё нет — временный ключ: APK рабочий, но следующую версию поверх него не поставить
+            keytool -genkeypair -keystore "$RUNNER_TEMP/release.jks" -storepass temppass -keypass temppass \
+              -alias qmt -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=QMT test"
+            echo "KEYSTORE_PASSWORD=temppass" >> "$GITHUB_ENV"
+            echo "SIGNED=0" >> "$GITHUB_ENV"
+          fi
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Сборка
+        working-directory: android
+        run: gradle --no-daemon assembleQmtRelease assembleArlanRelease
+
+      - name: Выложить в «Releases»
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/qmt/release/app-qmt-release.apk QMT-Sklad.apk
+          cp android/app/build/outputs/apk/arlan/release/app-arlan-release.apk Arlan-Sklad.apk
+          NOTE="Сборка ${GITHUB_RUN_NUMBER}. Скачайте APK на телефон и установите."
+          [ "$SIGNED" = "0" ] && NOTE="$NOTE ТЕСТОВАЯ подпись — следующая версия поверх не встанет."
+          gh release delete android --yes --cleanup-tag || true
+          gh release create android QMT-Sklad.apk Arlan-Sklad.apk --title "Android-приложение (сборка ${GITHUB_RUN_NUMBER})" --notes "$NOTE" --latest
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: '*.apk'

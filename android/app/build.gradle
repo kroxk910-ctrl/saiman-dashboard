@@ -1,0 +1,53 @@
+plugins { id 'com.android.application' }
+
+// Номер версии = номер сборки на GitHub, чтобы новый APK ставился поверх старого
+def buildNo = (System.getenv("GITHUB_RUN_NUMBER") ?: "1") as Integer
+
+android {
+    namespace 'kz.qmt.dashboard'
+    compileSdk 34
+
+    defaultConfig {
+        minSdk 26
+        targetSdk 34
+        versionCode buildNo
+        versionName "1.0." + buildNo
+    }
+
+    signingConfigs {
+        release {
+            // ключ подписи лежит в секрете репозитория ANDROID_KEYSTORE (workflow кладёт его в файл)
+            def ks = file(System.getenv("KEYSTORE_FILE") ?: "release.jks")
+            storeFile ks
+            storePassword System.getenv("KEYSTORE_PASSWORD") ?: ""
+            keyAlias "qmt"
+            keyPassword System.getenv("KEYSTORE_PASSWORD") ?: ""
+        }
+    }
+
+    flavorDimensions = ["org"]
+    productFlavors {
+        qmt {
+            dimension "org"
+            applicationId "kz.qmt.dashboard"
+            buildConfigField "String", "SITE_URL", '"https://kroxk910-ctrl.github.io/saiman-dashboard/"'
+        }
+        arlan {
+            dimension "org"
+            applicationId "kz.qmt.arlan"
+            buildConfigField "String", "SITE_URL", '"https://kroxk910-ctrl.github.io/arlan-dashboard/"'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+    buildFeatures { buildConfig true }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
