@@ -803,6 +803,8 @@
   .auto-tag{display:inline-block; margin-left:4px; padding:0 6px; border-radius:5px; background:var(--wait-bg); color:var(--ink); font-size:12px; font-weight:600;}
   .req-edit{margin-left:6px; border:1px solid var(--line); background:var(--panel); border-radius:6px; padding:2px 6px; font-size:13px; cursor:pointer; vertical-align:middle;}
   .req-edit:hover{border-color:var(--accent);}
+  .req-saving{display:inline-block; animation:reqPulse 1.2s ease-in-out infinite;}
+  @keyframes reqPulse{50%{opacity:.35;}}
   .edit-line{display:grid; grid-template-columns:1fr 110px; gap:10px; align-items:center; padding:10px 0; border-bottom:1px solid var(--line);}
   .edit-line:last-child{border-bottom:none;}
   .edit-line .el-code{font-weight:700; color:var(--ink);}
@@ -1942,7 +1944,7 @@
       if(!map.has(r.id)){
         map.set(r.id, {id:r.id, date:r.date, manager:r.manager, status:r.status, comment:r.comment,
                        shipDate:r.shipDate, changedBy:r.changedBy, realized:r.realized,
-                       realizedBy:r.realizedBy, realizedAt:r.realizedAt, type:r.type, items:[]});
+                       realizedBy:r.realizedBy, realizedAt:r.realizedAt, type:r.type, tmp:r.tmp, items:[]});
       }
       map.get(r.id).items.push({code:r.code, codeKey:r.codeKey, qty:r.qty, kit:r.kit});
     });
@@ -2316,8 +2318,9 @@
   // Отгружено без реализации и реализацию ещё не отметили — заявку менять/удалять нельзя (то же правило на сервере).
   const isLocked = r => (r.status === ST_SHIPPED || r.status === ST_DIRECT) && r.realized === "Нет" && !r.realizedAt;
 
+  const reqNo = req => req.tmp ? `<span class="req-saving" title="Сохраняется — номер появится через пару секунд">⏳</span>` : `№${req.id}`;
   function requestActions(req){
-    if(!currentUser) return [];
+    if(!currentUser || req.tmp) return [];
     if(isLocked(req)) return [];
     const factory = req.type === TYPE_FACTORY;
     const shipped = req.status === ST_SHIPPED || req.status === ST_DIRECT;
@@ -2393,7 +2396,7 @@
       else if(req.status === ST_SHIPPED && req.shipDate) meta = `отгружена ${esc(req.shipDate)}${req.changedBy ? " · " + esc(req.changedBy) : ""}`;
       else if(req.status !== ST_NEW && req.changedBy) meta = esc(req.changedBy);
       html += `<tr class="${req.status === ST_CANCELLED ? 'old-row' : ''}">
-        <td class="req-id">№${req.id}${canEditReq(req) ? `<button type="button" class="req-edit" data-edit="${req.id}" title="Изменить количество">✏️</button>` : ""}</td>
+        <td class="req-id">${reqNo(req)}${canEditReq(req) ? `<button type="button" class="req-edit" data-edit="${req.id}" title="Изменить количество">✏️</button>` : ""}</td>
         <td><div class="req-items">${req.lines.map(lineHtml).join("")}</div></td>
         <td>${badge}${isUnrealized(req) ? `<span class="real-tag">без реализации</span>` : ""}${meta ? `<div class="req-meta">${meta}</div>` : ""}${isLocked(req) ? `<div class="req-meta">🔒 изменить или удалить можно после реализации</div>` : ""}${req.realized === "Нет" && req.realizedAt ? `<div class="req-meta">реализация проведена ${esc(req.realizedAt)}${isAutoReal(req) ? ` <span class="auto-tag" title="Отметил сам дашборд по ведомости 1С — проверьте на вкладке «Без реализации»">🤖 по 1С</span>` : ""}</div>` : ""}</td>
         <td>${esc(req.manager)}</td>
@@ -2506,13 +2509,29 @@
 
   // ---------- Мгновенный отклик: изменение видно сразу, сохранение идёт в фоне ----------
   // Пока сервер сохраняет, данные с сервера (в т.ч. из фонового обновления) показываем с этой правкой поверх.
-  const pendingOps = new Map();   // № заявки → {del: true} | {status, shipDate, changedBy}
+  const pendingOps = new Map();   // № заявки → {del: true} | {status, shipDate, changedBy} | {qty: {ключ позиции: новое кол-во}}
+  const pendingNew = [];          // новые заявки, которые сервер ещё сохраняет: {id, tmp, rows}
+  let tmpSeq = 0;
   function withPending(rows){
-    if(!pendingOps.size) return rows;
-    return rows.filter(r => !(pendingOps.get(r.id) || {}).del).map(r => {
+    if(!pendingOps.size && !pendingNew.length) return rows;
+    let out = rows.filter(r => !(pendingOps.get(r.id) || {}).del).map(r => {
       const p = pendingOps.get(r.id);
-      return p && p.status ? Object.assign({}, r, {status: p.status, shipDate: p.shipDate != null ? p.shipDate : r.shipDate, changedBy: p.changedBy || r.changedBy}) : r;
-    });
+      if(p && p.status) return Object.assign({}, r, {status: p.status, shipDate: p.shipDate != null ? p.shipDate : r.shipDate, changedBy: p.changedBy || r.changedBy});
+      if(p && p.qty){
+        const km = (r.kit || "").match(/^(.+?)\s*×\s*(\d+)$/);
+        if(km && ("kit:" + r.kit) in p.qty){
+          const n = Number(p.qty["kit:" + r.kit]), was = Number(km[2]) || 1;
+          return Object.assign({}, r, {qty: r.qty / was * n, kit: n ? `${km[1]} × ${n}` : r.kit});
+        }
+        if(!km && ("code:" + r.codeKey) in p.qty) return Object.assign({}, r, {qty: Number(p.qty["code:" + r.codeKey])});
+      }
+      return r;
+    }).filter(r => !(pendingOps.get(r.id) || {}).qty || r.qty > 0);
+    if(pendingNew.length){
+      const have = new Set(out.map(r => r.id));
+      pendingNew.forEach(n => { if(!have.has(n.id)) out = out.concat(n.rows.map(r => Object.assign({}, r, {id: n.id, tmp: n.tmp}))); });
+    }
+    return out;
   }
   async function runOptimistic(id, op, call, failMsg){
     const before = requestRows;
@@ -2720,7 +2739,7 @@
     </tr></thead><tbody>`;
     rows.forEach(req=>{
       html += `<tr>
-        <td class="req-id">№${req.id}${canEditReq(req) ? `<button type="button" class="req-edit" data-edit="${req.id}" title="Изменить количество">✏️</button>` : ""}</td>
+        <td class="req-id">${reqNo(req)}${canEditReq(req) ? `<button type="button" class="req-edit" data-edit="${req.id}" title="Изменить количество">✏️</button>` : ""}</td>
         <td><div class="req-items">${req.lines.map(lineHtml).join("")}</div></td>
         <td><span class="badge ${statusClass(req.status)}">${esc(req.status)}</span>${(() => {
           if(!(req.status === ST_SHIPPED || req.status === ST_DIRECT) || !req.shipDate) return "";
@@ -2730,7 +2749,7 @@
         <td>${esc(req.manager)}</td>
         <td>${esc(req.date)}</td>
         <td>${esc(req.comment) || `<span class="dash">—</span>`}</td>
-        <td>${isWarehouse() ? `<button type="button" class="ok-btn" data-real="${req.id}">✓ Реализация проведена</button>` : ""}</td>
+        <td>${isWarehouse() && !req.tmp ? `<button type="button" class="ok-btn" data-real="${req.id}">✓ Реализация проведена</button>` : ""}</td>
       </tr>`;
     });
     html += `</tbody></table>`;
@@ -2745,7 +2764,7 @@
   }
 
   // ---------- Изменить количество в заявке (завсклад и админ) ----------
-  const canEditReq = req => isWarehouse() && req.status !== ST_CANCELLED;
+  const canEditReq = req => isWarehouse() && req.status !== ST_CANCELLED && !req.tmp;
   function wireEditReq(host){
     host.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", e => {
       e.stopPropagation();
@@ -2801,15 +2820,14 @@
     if(items.some(it => !/^\d+$/.test(it.qty))){ showMsg(err, "Количество — целое число (0 — убрать позицию)"); return; }
     if(items.every(it => Number(it.qty) === 0)){ showMsg(err, "Нельзя убрать все позиции — лучше отмените заявку"); return; }
     if(items.every(it => Number(it.qty) === it.was)){ closeOverlay(document.getElementById("editReqModalOverlay")); return; }
-    sub.disabled = true; sub.textContent = "Сохраняю…";
-    try{
+    // мгновенно: окно закрывается, новые количества видны сразу, сохранение идёт в фоне
+    const qty = {};
+    items.forEach(it => { qty[it.key] = Number(it.qty); });
+    closeOverlay(document.getElementById("editReqModalOverlay"));
+    await runOptimistic(req.id, {qty}, async () => {
       const res = await api("editRequest", {id: req.id, items: items.map(it => ({key: it.key, qty: it.qty}))});
-      showMsg(ok, `Сохранено: ${(res.changes || []).join(", ")}${res.warn ? " · ⚠ " + res.warn : ""}`);
-      sub.textContent = "Готово ✓";
-      setTimeout(() => { closeOverlay(document.getElementById("editReqModalOverlay")); syncAll(true); }, res.warn ? 2500 : 900);
-    }catch(e){
-      showMsg(err, e.message); sub.disabled = false; sub.textContent = "Сохранить";
-    }
+      if(res.warn) showToast({title: `Заявка №${req.id} изменена`, body: "⚠ " + res.warn, kind: "warn"});
+    }, `Не удалось изменить заявку №${req.id}: `);
   });
 
   async function markRealized(req, btn){
@@ -4357,6 +4375,25 @@
       hideMsg(err);
       const problem = cfg.validate();
       if(problem){ showMsg(err, problem); return; }
+      if(cfg.instant){
+        // мгновенно: окно закрывается, запись сразу видна в списке, сервер сохраняет в фоне
+        const body = cfg.prepare();
+        const mark = cfg.instant.show(body);
+        closeOverlay(overlay);
+        setSyncState("loading", "Сохраняю…");
+        try{
+          const res = await cfg.send(body);
+          cfg.instant.done(mark, res);
+          await syncAll(true);
+        }catch(e){
+          cfg.instant.fail(mark);
+          setSyncState("error", "Не сохранилось");
+          hideMsg(ok); showMsg(err, "Не сохранилось: " + e.message);
+          submit.disabled = false; submit.textContent = labelOf();
+          openOverlay(overlay);   // форма с тем, что уже ввели — можно поправить и отправить ещё раз
+        }
+        return;
+      }
       submit.disabled = true; submit.textContent = "Отправляю…";
       try{
         const res = await cfg.send();
@@ -4417,7 +4454,7 @@
       if(!document.querySelector('input[name="realized"]:checked')) return "Укажите, проведена ли реализация в 1С";
       return null;
     },
-    async send(){
+    prepare(){
       const body = {
         items: requestEditor.collect(),
         comment: document.getElementById("fldRequestComment").value.trim(),
@@ -4425,6 +4462,36 @@
         direct: isDirectRequest()
       };
       if(isIssued()){ body.issued = true; body.forManager = document.getElementById("fldManagerSel").value; }
+      return body;
+    },
+    instant: {
+      show(body){
+        const d = new Date(), now = `${todayStr()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+        const status = body.direct ? ST_DIRECT : body.issued ? ST_SHIPPED : ST_NEW;
+        const me = currentUser ? currentUser.name : "";
+        const n = {id: 900000000 + (++tmpSeq), tmp: true, rows: body.items.filter(it => Number(it.qty) > 0).map(it => ({
+          sheetRow: 0, date: todayStr(), manager: body.issued ? body.forManager : me,
+          code: it.code, codeKey: normCode(it.code), qty: Number(it.qty), status, comment: body.comment,
+          shipDate: body.issued ? todayStr() : "", changedBy: body.issued ? me : "",
+          realized: body.realized ? "Да" : "Нет", realizedBy: "", realizedAt: "",
+          type: body.direct ? TYPE_FACTORY : "Склад", kit: "", createdAt: now
+        }))};
+        pendingNew.push(n);
+        requestRows = withPending(requestRows.filter(r => !r.tmp)); requests = groupRequests(requestRows); renderAll();
+        return n;
+      },
+      done(n, res){
+        if(res && res.id){ n.id = Number(res.id); n.tmp = false; }   // номер уже известен; строка держится, пока сервер не вернёт её в данных
+        setTimeout(() => { const i = pendingNew.indexOf(n); if(i >= 0) pendingNew.splice(i, 1); }, 20000);
+        if(res && res.warn) showToast({title: `№${res.id}: записано`, body: "⚠ " + res.warn, kind: "warn"});
+        requestRows = withPending(requestRows.filter(r => !r.tmp)); requests = groupRequests(requestRows); renderAll();
+      },
+      fail(n){
+        const i = pendingNew.indexOf(n); if(i >= 0) pendingNew.splice(i, 1);
+        requestRows = requestRows.filter(r => !r.tmp && r.id < 900000000); requests = groupRequests(requestRows); renderAll();
+      }
+    },
+    async send(body){
       try{ return await api("createRequest", body); }
       catch(err){
         // это уже выдали без заявки — переспросить, не другая ли это отгрузка
