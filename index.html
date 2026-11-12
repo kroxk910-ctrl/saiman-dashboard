@@ -872,45 +872,90 @@
   .idm-breakdown{font-size:14px; color:var(--ink-faint); margin-top:8px; line-height:1.6;}
   .idm-breakdown b{color:var(--ink-dim); font-weight:600; font-family:var(--mono);}
 
-  /* ======================= ПРИЛОЖЕНИЕ (Android): главная, разделы, нижняя панель ======================= */
+  /* ======================= ПРИЛОЖЕНИЕ (Android): главная, разделы, нижняя панель =======================
+     Мотив — счётный механизм электросчётчика: главное число на главной показано «барабаном» из ячеек. */
   .app-only{display:none !important;}
   html.app .app-only:not(.view){display:revert !important;}
   html.app .view.app-only.active{display:block !important;}
   html.app .tabs{display:none;}
   html.app #logoutBtnM{display:none !important;}
-  html.app main{padding-bottom:calc(84px + env(safe-area-inset-bottom));}
-  html.app footer{padding-bottom:calc(80px + env(safe-area-inset-bottom));}
-  html.app .toast-stack{bottom:calc(76px + env(safe-area-inset-bottom));}
-  .app-nav{position:fixed; left:0; right:0; bottom:0; z-index:40; display:flex; background:var(--panel); border-top:1px solid var(--line); padding:6px 4px calc(6px + env(safe-area-inset-bottom));}
+  html.app main{padding-bottom:calc(92px + env(safe-area-inset-bottom));}
+  html.app footer{padding-bottom:calc(88px + env(safe-area-inset-bottom));}
+  html.app .toast-stack{bottom:calc(84px + env(safe-area-inset-bottom));}
+  html.app{--cond:"Fira Sans Condensed", var(--sans); --reg-bg:#15191c; --reg-cell:#0b0d0f; --reg-ink:#f2f4f5; --reg-red:#d9483b;}
+
+  .app-nav{position:fixed; left:0; right:0; bottom:0; z-index:40; background:var(--panel); border-top:1px solid var(--line); padding:6px 6px calc(8px + env(safe-area-inset-bottom));}
   html.app nav.app-nav.app-only{display:flex !important;}
-  .app-nav button{flex:1; background:none; border:0; color:var(--ink-faint); font:inherit; font-size:12px; display:flex; flex-direction:column; align-items:center; gap:2px; padding:4px 0; position:relative; cursor:pointer;}
-  .app-nav button .ic{font-size:22px; line-height:1.1;}
-  .app-nav button.on{color:var(--accent);}
-  .app-nav .dot{position:absolute; top:0; left:calc(50% + 8px); min-width:18px; height:18px; border-radius:9px; background:var(--danger); color:#fff; font-size:11px; line-height:18px; padding:0 5px; font-weight:600;}
-  .home-hi{font-size:20px; font-weight:600; margin:4px 0 14px;}
-  .home-cap{font-size:13px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.04em; margin:16px 0 8px;}
-  .home-item{display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:8px; color:var(--ink); font:inherit; font-size:16px; cursor:pointer;}
-  .home-item .ic{font-size:22px; width:28px; text-align:center;}
-  .home-item .num{margin-left:auto; font-weight:700; font-size:17px; min-width:28px; text-align:center; padding:2px 8px; border-radius:8px; background:var(--panel-2); color:var(--ink-dim);}
-  .home-item .num.hot{background:var(--danger-bg); color:var(--danger);}
-  .home-item .num.warm{background:var(--wait-bg); color:var(--ink);}
-  .home-item.calm{opacity:.75;}
-  .home-quick{display:grid; grid-template-columns:repeat(3,1fr); gap:8px;}
-  .home-quick button{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 6px; color:var(--ink); font:inherit; font-size:14px; display:flex; flex-direction:column; align-items:center; gap:6px; cursor:pointer;}
-  .home-quick button .ic{font-size:22px;}
-  .home-quick button.main{background:var(--accent); border-color:var(--accent); color:var(--accent-ink);}
-  .home-recent{background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden;}
-  .home-recent button{display:flex; gap:10px; align-items:center; width:100%; background:none; border:0; border-bottom:1px solid var(--line); padding:12px 14px; color:var(--ink); font:inherit; font-size:15px; text-align:left; cursor:pointer;}
-  .home-recent button:last-child{border-bottom:0;}
-  .home-recent .what{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink-dim);}
-  .sec-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px;}
-  .sec-tile{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px 14px; text-align:left; color:var(--ink); font:inherit; font-size:16px; font-weight:600; display:flex; flex-direction:column; gap:8px; cursor:pointer; min-height:96px;}
-  .sec-tile .ic{font-size:26px;}
-  .sec-tile .meta{font-size:13px; font-weight:400; color:var(--ink-faint); margin-top:auto;}
-  .sec-tile .meta.hot{color:var(--danger); font-weight:600;}
+  .app-nav button{flex:1; background:none; border:0; color:var(--ink-dim); font:inherit; font-size:12px; font-weight:500; display:flex; flex-direction:column; align-items:center; gap:3px; padding:2px 0; position:relative; cursor:pointer; -webkit-tap-highlight-color:transparent;}
+  .app-nav .ic{font-size:22px; line-height:30px; width:56px; height:30px; border-radius:15px; display:flex; align-items:center; justify-content:center; transition:background .2s;}
+  .app-nav button.on{color:var(--ink);}
+  .app-nav button.on .ic{background:var(--accent-dim); color:var(--accent);}
+  .app-nav .dot{position:absolute; top:-3px; left:calc(50% + 10px); min-width:18px; height:18px; border-radius:9px; background:var(--reg-red); color:#fff; font-size:11px; line-height:18px; padding:0 5px; font-weight:700; box-shadow:0 0 0 2px var(--panel);}
+
+  .home-head{margin:2px 0 14px;}
+  .home-hi{font-family:var(--cond); font-weight:600; font-size:30px; line-height:1.05; letter-spacing:.01em; margin:0;}
+  .home-date{color:var(--ink-dim); font-size:14px; margin-top:4px;}
+
+  .reg{display:flex; align-items:center; gap:14px; width:100%; text-align:left; background:var(--reg-bg); color:var(--reg-ink); border:0; border-radius:14px; padding:16px; font:inherit; cursor:pointer; position:relative; overflow:hidden;}
+  .reg::after{content:""; position:absolute; inset:0; border-radius:14px; box-shadow:inset 0 0 0 1px rgba(255,255,255,.06); pointer-events:none;}
+  .reg-cells{display:flex; gap:3px; padding:5px; background:#000; border-radius:8px;}
+  .reg-cell{width:34px; height:48px; border-radius:4px; background:var(--reg-cell); overflow:hidden; display:flex; align-items:center; justify-content:center; font-family:var(--cond); font-weight:700; font-size:38px; line-height:1; color:var(--reg-ink); box-shadow:inset 0 10px 10px -8px rgba(255,255,255,.12), inset 0 -10px 10px -8px rgba(0,0,0,.8);}
+  .reg-cell:last-child{background:var(--reg-red); color:#fff;}
+  .reg-cell.idle{color:#4b5359;}
+  .reg-cell:last-child.idle{background:#3a1f1c; color:#a86a62;}
+  .reg-cell span{display:block;}
+  .reg.roll .reg-cell span{animation:regRoll .5s cubic-bezier(.2,.8,.2,1) both;}
+  .reg.roll .reg-cell:nth-child(2) span{animation-delay:.07s;}
+  .reg.roll .reg-cell:nth-child(3) span{animation-delay:.14s;}
+  @keyframes regRoll{from{transform:translateY(105%);} to{transform:none;}}
+  .reg-txt{min-width:0;}
+  .reg-what{font-family:var(--cond); font-weight:600; font-size:22px; line-height:1.1;}
+  .reg-sub{font-size:13px; color:#9aa3a9; margin-top:3px;}
+  .reg .chev{margin-left:auto; font-size:22px; color:#6d767c;}
+
+  .att{background:var(--panel); border:1px solid var(--line); border-radius:14px; margin-top:12px; overflow:hidden;}
+  .att-row{display:flex; align-items:center; gap:12px; width:100%; background:none; border:0; border-top:1px solid var(--line); padding:13px 14px; color:var(--ink); font:inherit; font-size:16px; text-align:left; cursor:pointer;}
+  .att-row:first-child{border-top:0;}
+  .att-row .ic{font-size:21px; width:24px; color:var(--ink-dim);}
+  .att-row.hot .ic{color:var(--reg-red);}
+  .att-row.warm .ic{color:#d99a2b;}
+  .att-row .n{margin-left:auto; font-family:var(--cond); font-weight:700; font-size:22px; min-width:24px; text-align:right;}
+  .att-row.hot .n{color:var(--reg-red);}
+  .att-row .chev{color:var(--ink-faint); font-size:18px; margin-left:4px;}
+  .att-calm{padding:12px 14px; border-top:1px solid var(--line); color:var(--ink-dim); font-size:14px; display:flex; gap:10px; align-items:center;}
+  .att-calm .ic{color:var(--ok); font-size:20px;}
+
+  .home-act{display:grid; grid-template-columns:1fr 56px 56px; gap:8px; margin-top:12px;}
+  .home-act button{height:56px; border-radius:14px; border:1px solid var(--line); background:var(--panel); color:var(--ink); font:inherit; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer;}
+  .home-act button i{font-size:24px;}
+  .home-act button.main i{font-size:22px;}
+  .home-act button.main{background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-family:var(--cond); font-weight:600; font-size:20px; letter-spacing:.01em;}
+
+  .home-h{font-family:var(--cond); font-weight:600; font-size:20px; margin:22px 0 8px; display:flex; align-items:baseline; gap:8px;}
+  .home-h button{margin-left:auto; background:none; border:0; color:var(--accent); font:inherit; font-family:var(--sans); font-size:14px; cursor:pointer;}
+  .rec{background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden;}
+  .rec button{display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:4px 12px; align-items:center; width:100%; background:none; border:0; border-top:1px solid var(--line); padding:11px 14px; color:var(--ink); font:inherit; text-align:left; cursor:pointer;}
+  .rec button:first-child{border-top:0;}
+  .rec .no{font-family:var(--cond); font-weight:700; font-size:19px;}
+  .rec .what{font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .rec .who{grid-column:2; font-size:13px; color:var(--ink-faint);}
+  .rec .badge{grid-row:1 / span 2; grid-column:3;}
+
+  .sec-group{font-family:var(--cond); font-weight:600; font-size:18px; color:var(--ink-dim); margin:18px 2px 8px;}
+  .sec-grid{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px;}
+  .sec-tile{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 10px 10px; text-align:left; color:var(--ink); font:inherit; font-size:14px; font-weight:500; line-height:1.2; display:flex; flex-direction:column; gap:8px; cursor:pointer; min-height:104px; position:relative;}
+  .sec-tile .ic{font-size:22px; width:40px; height:40px; border-radius:11px; display:flex; align-items:center; justify-content:center; background:var(--panel-2); color:var(--ink-dim);}
+  .sec-tile .n{position:absolute; top:10px; right:10px; font-family:var(--cond); font-weight:700; font-size:17px; color:var(--ink-faint);}
+  .sec-tile .n.hot{color:#fff; background:var(--reg-red); border-radius:9px; padding:0 6px; font-size:14px; line-height:20px;}
   .sec-tile.cur{border-color:var(--accent);}
-  .sec-foot{display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;}
-  .sec-foot button{flex:1 1 40%; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; color:var(--ink); font:inherit; font-size:15px; cursor:pointer;}
+  .sec-tile.cur .ic{background:var(--accent-dim); color:var(--accent);}
+  .sec-me{display:flex; align-items:center; gap:12px; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin-top:22px;}
+  .sec-me .av{width:40px; height:40px; border-radius:20px; background:var(--accent-dim); color:var(--accent); display:flex; align-items:center; justify-content:center; font-family:var(--cond); font-weight:700; font-size:20px;}
+  .sec-me .nm{font-weight:600;}
+  .sec-me .rl{font-size:13px; color:var(--ink-faint);}
+  .sec-me button{margin-left:auto; background:none; border:1px solid var(--line); border-radius:10px; color:var(--ink); width:42px; height:42px; font-size:20px; cursor:pointer; display:flex; align-items:center; justify-content:center;}
+  .sec-me button + button{margin-left:6px;}
+  @media (prefers-reduced-motion:reduce){ .reg.roll .reg-cell span{animation:none;} }
 
   /* ======================= ТЕЛЕФОН ======================= */
   .chip-row{display:contents;}
@@ -1219,10 +1264,10 @@
 </div>
 
 <nav class="app-nav app-only" id="appNav" aria-label="Разделы">
-  <button type="button" data-nav="home"><span class="ic">🏠</span>Главная</button>
-  <button type="button" data-nav="requests"><span class="ic">📋</span><span id="navReqLabel">Заявки</span><span class="dot" id="navReqDot" hidden></span></button>
-  <button type="button" data-nav="stock"><span class="ic">📦</span>Остатки</button>
-  <button type="button" data-nav="sections"><span class="ic">▦</span>Разделы<span class="dot" id="navSecDot" hidden></span></button>
+  <button type="button" data-nav="home"><span class="ic"><i class="ti ti-home" aria-hidden="true"></i></span>Главная</button>
+  <button type="button" data-nav="requests"><span class="ic"><i class="ti ti-clipboard-list" aria-hidden="true"></i></span><span id="navReqLabel">Заявки</span><span class="dot" id="navReqDot" hidden></span></button>
+  <button type="button" data-nav="stock"><span class="ic"><i class="ti ti-packages" aria-hidden="true"></i></span>Остатки</button>
+  <button type="button" data-nav="sections"><span class="ic"><i class="ti ti-layout-grid" aria-hidden="true"></i></span>Разделы<span class="dot" id="navSecDot" hidden></span></button>
 </nav>
 
 <main>
@@ -5175,6 +5220,8 @@
     if(chip){ const c = document.querySelector(chip); if(c) c.click(); }
     window.scrollTo(0, 0);
   }
+  const TI = n => `<i class="ti ti-${n}" aria-hidden="true"></i>`;
+  let lastRegValue = null;
   function renderHome(){
     const host = document.getElementById("homeHost");
     if(!host || !currentUser) return;
@@ -5183,38 +5230,60 @@
     const unreal = wh ? (parseInt(document.getElementById("unrealizedCount").textContent, 10) || 0) : mine.filter(isUnrealized).length;
     const av = r => r.key && availMap[normCode(r.key)] ? availMap[normCode(r.key)].available : r.qty;
     const low = stockRows.filter(r => !r.isSection && !isHiddenRow(r) && av(r) > 0 && av(r) < 10).length;
-    const items = wh ? [
-      {ic: "🆕", label: "Новые заявки", n: byStatus(ST_NEW), hot: true, go: () => appGo("requests", '[data-reqfilter="Новая"]')},
-      {ic: "🛠", label: "В подготовке", n: byStatus(ST_PREP), go: () => appGo("requests", '[data-reqfilter="В подготовке"]')},
-      {ic: "✅", label: "Готовы к отгрузке", n: byStatus(ST_READY), go: () => appGo("requests", '[data-reqfilter="Готова к отгрузке"]')},
-      {ic: "🧾", label: "Без реализации", n: unreal, hot: true, go: () => appGo("unrealized")},
-      {ic: "⚠️", label: "Заканчивается (<10)", n: low, warm: true, go: () => appGo("stock", '[data-stockfilter="low"]')}
+    const plural = (n, one, few, many) => (n % 10 === 1 && n % 100 !== 11) ? one : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) ? few : many;
+
+    // главное число — «барабан счётчика»
+    const reg = wh
+      ? {n: byStatus(ST_NEW), what: n => n ? `${plural(n, "новая заявка", "новые заявки", "новых заявок")}` : "новых заявок нет", sub: n => n ? "ждут, когда склад возьмёт в работу" : "всё разобрано", go: () => appGo("requests", '[data-reqfilter="Новая"]')}
+      : {n: byStatus(ST_READY), what: n => n ? `${plural(n, "заявка готова", "заявки готовы", "заявок готово")}` : "готовых заявок нет", sub: n => n ? "можно забирать со склада" : "склад ещё собирает", go: () => appGo("requests", '[data-reqfilter="Готова к отгрузке"]')};
+    const digits = String(Math.min(reg.n, 999)).padStart(3, "0").split("");
+    const lead = String(reg.n).length;   // ведущие нули — приглушённые
+    const roll = lastRegValue !== reg.n;
+    lastRegValue = reg.n;
+
+    const rows = (wh ? [
+      {ic: "tool", label: "В подготовке", n: byStatus(ST_PREP), go: () => appGo("requests", '[data-reqfilter="В подготовке"]')},
+      {ic: "circle-check", label: "Готовы к отгрузке", n: byStatus(ST_READY), go: () => appGo("requests", '[data-reqfilter="Готова к отгрузке"]')},
+      {ic: "receipt-off", label: "Без реализации", n: unreal, hot: true, go: () => appGo("unrealized")},
+      {ic: "alert-triangle", label: "Заканчивается", n: low, warm: true, go: () => appGo("stock", '[data-stockfilter="low"]')}
     ] : [
-      {ic: "✅", label: "Готовы к отгрузке", n: byStatus(ST_READY), hot: true, go: () => appGo("requests", '[data-reqfilter="Готова к отгрузке"]')},
-      {ic: "⏳", label: "Мои заявки в работе", n: byStatus(ST_NEW) + byStatus(ST_PREP), go: () => appGo("requests", '[data-reqfilter="active"]')},
-      {ic: "🧾", label: "Без реализации", n: unreal, hot: true, go: () => appGo("requests", '[data-reqfilter="all"]')},
-      {ic: "⚠️", label: "Заканчивается (<10)", n: low, warm: true, go: () => appGo("stock", '[data-stockfilter="low"]')}
-    ];
+      {ic: "hourglass", label: "Мои заявки в работе", n: byStatus(ST_NEW) + byStatus(ST_PREP), go: () => appGo("requests", '[data-reqfilter="active"]')},
+      {ic: "receipt-off", label: "Без реализации", n: unreal, hot: true, go: () => appGo("requests", '[data-reqfilter="all"]')},
+      {ic: "alert-triangle", label: "Заканчивается", n: low, warm: true, go: () => appGo("stock", '[data-stockfilter="low"]')}
+    ]);
+    const busy = rows.filter(r => r.n), calm = rows.filter(r => !r.n);
     const h = new Date().getHours();
     const hi = h < 5 ? "Доброй ночи" : h < 12 ? "Доброе утро" : h < 18 ? "Добрый день" : "Добрый вечер";
+    const date = new Date().toLocaleDateString("ru-RU", {weekday: "long", day: "numeric", month: "long"});
     const recent = mine.slice().sort((a, b) => b.id - a.id).slice(0, 5);
+
     host.innerHTML = `
-      <div class="home-hi">${hi}, ${esc(currentUser.name)}</div>
-      <div class="home-cap">Требует внимания</div>
-      ${items.map((it, i) => `<button type="button" class="home-item${it.n ? "" : " calm"}" data-hi="${i}"><span class="ic">${it.ic}</span><span>${it.label}</span>
-        <span class="num${it.n ? (it.hot ? " hot" : it.warm ? " warm" : "") : ""}">${it.n ? fmtNum(it.n) : "0"}</span></button>`).join("")}
-      <div class="home-cap">Быстро</div>
-      <div class="home-quick">
-        <button type="button" class="main" data-q="req"><span class="ic">＋</span>Заявка</button>
-        ${wh ? `<button type="button" data-q="rec"><span class="ic">🚚</span>Приход</button>` : `<button type="button" data-q="price"><span class="ic">🏷</span>Прайс</button>`}
-        <button type="button" data-q="find"><span class="ic">🔍</span>Найти</button>
+      <div class="home-head"><h1 class="home-hi">${hi}, ${esc(currentUser.name)}</h1><div class="home-date">${esc(date)}</div></div>
+      <button type="button" class="reg${roll ? " roll" : ""}" id="homeReg">
+        <span class="reg-cells">${digits.map((d, i) => `<span class="reg-cell${reg.n === 0 || i < 3 - lead ? " idle" : ""}"><span>${d}</span></span>`).join("")}</span>
+        <span class="reg-txt"><span class="reg-what">${reg.what(reg.n)}</span><div class="reg-sub">${reg.sub(reg.n)}</div></span>
+        <span class="chev">${TI("chevron-right")}</span>
+      </button>
+      <div class="att">
+        ${busy.map((r, i) => `<button type="button" class="att-row${r.hot ? " hot" : r.warm ? " warm" : ""}" data-att="${rows.indexOf(r)}"><span class="ic">${TI(r.ic)}</span><span>${r.label}</span><span class="n">${fmtNum(r.n)}</span><span class="chev">${TI("chevron-right")}</span></button>`).join("")}
+        ${calm.length ? `<div class="att-calm"${busy.length ? "" : ' style="border-top:0"'}><span class="ic">${TI("circle-check")}</span><span>${busy.length ? "Пусто" : "Всё спокойно, пусто"}: ${calm.map(r => r.label.toLowerCase()).join(", ")}</span></div>` : ""}
       </div>
-      ${recent.length ? `<div class="home-cap">Последние заявки</div><div class="home-recent">${recent.map(r => `<button type="button" data-rid="${r.id}">
-        <b>${reqNo(r)}</b><span class="what">${esc(itemsShort(r))}${wh ? " · " + esc(r.manager) : ""}</span><span class="badge ${statusClass(r.status)}">${esc(r.status)}</span></button>`).join("")}</div>` : ""}`;
-    host.querySelectorAll("[data-hi]").forEach(b => b.addEventListener("click", () => items[Number(b.dataset.hi)].go()));
+      <div class="home-act">
+        <button type="button" class="main" data-q="req">${TI("plus")} Новая заявка</button>
+        ${wh ? `<button type="button" data-q="rec" aria-label="Приход">${TI("truck-delivery")}</button>` : `<button type="button" data-q="price" aria-label="Прайс-лист">${TI("tag")}</button>`}
+        <button type="button" data-q="find" aria-label="Найти позицию">${TI("search")}</button>
+      </div>
+      ${recent.length ? `<div class="home-h">Последние заявки<button type="button" data-q="all">Все</button></div>
+      <div class="rec">${recent.map(r => `<button type="button" data-rid="${r.id}">
+        <span class="no">${reqNo(r)}</span><span class="what">${esc(itemsShort(r))}</span><span class="badge ${statusClass(r.status)}">${esc(r.status)}</span>
+        <span class="who">${wh ? esc(r.manager) + ", " : ""}${esc(r.date)}</span></button>`).join("")}</div>` : ""}`;
+
+    document.getElementById("homeReg").addEventListener("click", reg.go);
+    host.querySelectorAll("[data-att]").forEach(b => b.addEventListener("click", () => rows[Number(b.dataset.att)].go()));
     host.querySelector('[data-q="req"]').addEventListener("click", () => requestForm.open());
     host.querySelector('[data-q="rec"]')?.addEventListener("click", () => document.getElementById("newReceiptBtn").click());
     host.querySelector('[data-q="price"]')?.addEventListener("click", () => appGo("pricelist"));
+    host.querySelector('[data-q="all"]')?.addEventListener("click", () => appGo("requests", '[data-reqfilter="all"]'));
     host.querySelector('[data-q="find"]').addEventListener("click", () => {
       appGo("stock", '[data-stockfilter="all"]');
       setTimeout(() => { const i = document.getElementById("stockSearch"); i.focus(); i.select(); }, 60);
@@ -5224,29 +5293,39 @@
       const s = document.getElementById("requestsSearch"); s.value = "№" + b.dataset.rid; renderRequests();
     }));
     // точки на нижней панели
-    const reqDot = wh ? byStatus(ST_NEW) : byStatus(ST_READY);
+    const reqDot = reg.n;
     const d1 = document.getElementById("navReqDot"); d1.hidden = !reqDot; d1.textContent = reqDot;
     const d2 = document.getElementById("navSecDot"); d2.hidden = !(wh && unreal); d2.textContent = unreal;
     document.getElementById("navReqLabel").textContent = seesAll() ? "Заявки" : "Мои";
   }
-  const SECTION_ICONS = {requests: "📋", stock: "📦", unrealized: "🧾", receipts: "🚚", adjustments: "✏️", revision: "🔎", pricelist: "🏷", analytics: "📊", finance: "💰"};
+  const SECTION_META = {
+    requests: ["clipboard-list", "Работа"], unrealized: ["receipt-off", "Работа"], stock: ["packages", "Работа"],
+    receipts: ["truck-delivery", "Склад"], adjustments: ["adjustments-horizontal", "Склад"], revision: ["list-check", "Склад"],
+    pricelist: ["tag", "Справка и отчёты"], analytics: ["chart-bar", "Справка и отчёты"], finance: ["coin", "Справка и отчёты"]
+  };
   function renderSections(){
     const host = document.getElementById("sectionsHost");
-    if(!host) return;
+    if(!host || !currentUser) return;
     const cur = (document.querySelector(".tab-btn.active") || {}).dataset || {};
     const tabs = [...document.querySelectorAll(".tabs .tab-btn")].filter(b => !b.hidden && !b.classList.contains("app-only"));
-    host.innerHTML = `<div class="home-hi">Разделы</div><div class="sec-grid">${tabs.map(b => {
+    const groups = {};
+    tabs.forEach(b => { const g = (SECTION_META[b.dataset.view] || ["point", "Ещё"])[1]; (groups[g] = groups[g] || []).push(b); });
+    const tile = b => {
       const cnt = b.querySelector(".count"), name = b.cloneNode(true);
       name.querySelectorAll(".count").forEach(x => x.remove());
       const n = cnt ? cnt.textContent.trim() : "";
       const hot = cnt && cnt.classList.contains("alert") && n !== "0";
-      return `<button type="button" class="sec-tile${cur.view === b.dataset.view ? " cur" : ""}" data-sec="${b.dataset.view}"><span class="ic">${SECTION_ICONS[b.dataset.view] || "•"}</span>${esc(name.textContent.trim())}
-        ${n && n !== "—" ? `<span class="meta${hot ? " hot" : ""}">${esc(n)}</span>` : ""}</button>`;
-    }).join("")}</div>
-      <div class="sec-foot">
-        <button type="button" id="secNotif">🔔 Уведомления</button>
-        <button type="button" id="secTheme">◐ Тема</button>
-        <button type="button" id="secLogout">⏻ Выйти (${esc(currentUser ? currentUser.name : "")})</button>
+      return `<button type="button" class="sec-tile${cur.view === b.dataset.view ? " cur" : ""}" data-sec="${b.dataset.view}"><span class="ic">${TI((SECTION_META[b.dataset.view] || ["point"])[0])}</span>${esc(name.textContent.trim())}
+        ${n && n !== "—" ? `<span class="n${hot ? " hot" : ""}">${esc(n)}</span>` : ""}</button>`;
+    };
+    const role = (document.getElementById("rolePill").textContent || "").replace(/^·\s*/, "");
+    host.innerHTML = `<div class="home-head"><h1 class="home-hi">Разделы</h1></div>
+      ${Object.keys(groups).map(g => `<div class="sec-group">${g}</div><div class="sec-grid">${groups[g].map(tile).join("")}</div>`).join("")}
+      <div class="sec-me"><span class="av">${esc((currentUser.name || "?").slice(0, 1))}</span>
+        <span><div class="nm">${esc(currentUser.name)}</div><div class="rl">${esc(role)}</div></span>
+        <button type="button" id="secNotif" aria-label="Уведомления">${TI("bell")}</button>
+        <button type="button" id="secTheme" aria-label="Тема">${TI("contrast")}</button>
+        <button type="button" id="secLogout" aria-label="Выйти">${TI("logout")}</button>
       </div>`;
     host.querySelectorAll("[data-sec]").forEach(b => b.addEventListener("click", () => appGo(b.dataset.sec)));
     document.getElementById("secNotif").addEventListener("click", () => document.getElementById("tgBtn").click());
@@ -5260,6 +5339,10 @@
   }
   if(APP_MODE){
     document.documentElement.classList.add("app");
+    [["https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons-outline.min.css"],
+     ["https://fonts.googleapis.com/css2?family=Fira+Sans+Condensed:wght@600;700&display=swap"]].forEach(([href]) => {
+      const l = document.createElement("link"); l.rel = "stylesheet"; l.href = href; document.head.appendChild(l);
+    });
     document.querySelectorAll("#appNav [data-nav]").forEach(b => b.addEventListener("click", () => appGo(b.dataset.nav)));
     document.querySelectorAll(".tab-btn").forEach(b => b.addEventListener("click", () => syncAppNav(b.dataset.view)));
   }
