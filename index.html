@@ -3621,8 +3621,8 @@
         if(!name && !code) return;
         const fixed = fixCode(code);
         if(fixed !== code) fixedCodes.push([code, fixed]);
-        // «Доступно» = В наличии − Отгружается − В резерве: уже учитывает проведённые, но не вывезенные реализации
-        const qty = "avail" in val ? val.avail : ("have" in val ? val.have : 0);
+        // «Отгружается» не вычитаем (что уходит со склада, дашборд знает по своим заявкам): остаток = В наличии − В резерве
+        const qty = "have" in val ? val.have - (val.res || 0) : ("avail" in val ? val.avail + (val.ship || 0) : 0);
         items.push({code: fixed, name, unit, qty, available: "avail" in val ? val.avail : qty});
       });
     });
