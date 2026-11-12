@@ -2484,34 +2484,46 @@
     return data;
   }
 
+  // ---------- Мгновенный отклик: изменение видно сразу, сохранение идёт в фоне ----------
+  // Пока сервер сохраняет, данные с сервера (в т.ч. из фонового обновления) показываем с этой правкой поверх.
+  const pendingOps = new Map();   // № заявки → {del: true} | {status, shipDate, changedBy}
+  function withPending(rows){
+    if(!pendingOps.size) return rows;
+    return rows.filter(r => !(pendingOps.get(r.id) || {}).del).map(r => {
+      const p = pendingOps.get(r.id);
+      return p && p.status ? Object.assign({}, r, {status: p.status, shipDate: p.shipDate != null ? p.shipDate : r.shipDate, changedBy: p.changedBy || r.changedBy}) : r;
+    });
+  }
+  async function runOptimistic(id, op, call, failMsg){
+    const before = requestRows;
+    pendingOps.set(id, op);
+    requestRows = withPending(requestRows); requests = groupRequests(requestRows); renderAll();
+    setSyncState("loading", "Сохраняю…");
+    try{
+      await call();
+      setTimeout(() => { if(pendingOps.get(id) === op) pendingOps.delete(id); }, 20000);   // сервер уже сохранил — правка больше не нужна поверх
+      await syncAll(true);
+    }catch(err){
+      if(pendingOps.get(id) === op) pendingOps.delete(id);
+      requestRows = before; requests = groupRequests(requestRows); renderAll();   // откат на экране
+      setSyncState("error", "Не сохранилось");
+      alert(failMsg + err.message);
+      syncAll(true);
+    }
+  }
+
   async function changeRequestStatus(req, status, btn){
     const label = linesText(req);
     if(status === ST_CANCELLED && !confirm(`Отменить заявку №${req.id}?\n${label}`)) return;
-    const cell = btn.parentElement;
-    const original = cell.innerHTML;
-    cell.innerHTML = `<span class="badge other">Сохраняю…</span>`;
-    try{
-      await api("setRequestStatus", {id: req.id, status});
-      await syncAll(true);
-    }catch(err){
-      cell.innerHTML = original;
-      cell.querySelector(".badge-btn")?.addEventListener("click", (e)=>{ e.stopPropagation(); openStatusMenu(cell.querySelector(".badge-btn"), req); });
-      alert("Не удалось изменить статус: " + err.message);
-    }
+    const op = {status, changedBy: currentUser ? currentUser.name : ""};
+    if(status === ST_SHIPPED && !req.shipDate) op.shipDate = new Date().toLocaleDateString("ru-RU");
+    await runOptimistic(req.id, op, () => api("setRequestStatus", {id: req.id, status}), "Не удалось изменить статус: ");
   }
 
   async function removeRequest(req, btn){
     const label = linesText(req);
     if(!confirm(`Удалить заявку №${req.id} насовсем?\n${label}\n\nЕсли заявку просто не нужно выполнять — лучше поставь «${ST_CANCELLED}».`)) return;
-    const row = btn.closest("tr");
-    row.style.opacity = "0.4";
-    try{
-      await api("deleteRequest", {id: req.id});
-      await syncAll(true);
-    }catch(err){
-      row.style.opacity = "";
-      alert("Не удалось удалить заявку: " + err.message);
-    }
+    await runOptimistic(req.id, {del: true}, () => api("deleteRequest", {id: req.id}), "Не удалось удалить заявку: ");
   }
 
   // ---------- Item detail modal ----------
@@ -3968,7 +3980,7 @@
       snapshot = {disp: st.snapDisp, key: snapAtF(st.snapDisp)};
       pricelistRows = buildPricelist(data.pricelist);
       opsError = "";
-      requestRows = buildRequestRows(data.requests);
+      requestRows = withPending(buildRequestRows(data.requests));
       requests = groupRequests(requestRows);
       pendingEvents = detectRequestEvents(requests);
       receiptRows = buildReceipts(data.receipts);
