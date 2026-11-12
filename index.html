@@ -2259,25 +2259,45 @@
     return stockRows.filter(r => !r.isSection && r.key && !isHiddenRow(r))
       .sort((a, b) => (gi(a) - gi(b)) || (pk(b) - pk(a)) || (availOf(b.key) - availOf(a.key)) || a.name.localeCompare(b.name, "ru"));
   }
+  // Подсказки кода: не весь список, а до 5 штук — пустое поле → самые частые, с вводом → самые подходящие
+  const DL_MAX = 5;
+  const dlAll = {};   // id datalist → [{v, label, text, pop}]
+  const dlOpt = (v, label, pop) => ({v: String(v), label, pop: pop || 0, text: sfold(v + " " + label)});
+  function renderDl(id, q){
+    const all = dlAll[id] || [], f = sfold(String(q || "").trim());
+    let list;
+    if(!f) list = all.slice().sort((a, b) => b.pop - a.pop);
+    else {
+      const rank = o => { const v = sfold(o.v); return v === f ? 0 : v.startsWith(f) ? 1 : v.includes(f) ? 2 : 3; };
+      list = all.filter(o => o.text.includes(f)).sort((a, b) => (rank(a) - rank(b)) || (b.pop - a.pop));
+    }
+    const el = document.getElementById(id);
+    if(el) el.innerHTML = list.slice(0, DL_MAX).map(o => `<option value="${esc(o.v)}">${o.label}</option>`).join("");
+  }
+  ["input", "focusin"].forEach(ev => document.addEventListener(ev, e => {
+    const id = e.target && e.target.getAttribute && e.target.getAttribute("list");
+    if(id && dlAll[id]) renderDl(id, e.target.value);
+  }, true));
   function fillCodeDatalist(){
-    const dl = document.getElementById("stockCodes");
+    const pop = popularity(), pk = key => pop[normCode(key)] || 0;
     const ordered = suggestRows();
-    dl.innerHTML = ordered
-      .map(r => `<option value="${esc(r.key)}">${r.code ? esc(r.name) + " · " : "без артикула · "}доступно ${fmtNum(availOf(r.key))}</option>`).join("");
+    const stockOpts = ordered.map(r => dlOpt(r.key, `${r.code ? esc(r.name) + " · " : "без артикула · "}доступно ${fmtNum(availOf(r.key))}`, pk(r.key)));
+    dlAll.stockCodes = stockOpts;
     // + позиции из справочника 1С, которых нет в остатках (скрытые сюда не попадают: они есть в остатках)
     const inStockKeys = new Set(stockRows.filter(r => !r.isSection && r.key).map(r => latinCode(r.key)));
-    document.getElementById("receiptCodes").innerHTML = dl.innerHTML +
-      Object.values(catalogByCode).filter(c => !inStockKeys.has(latinCode(c.code)))
-        .map(c => `<option value="${esc(c.code)}">из 1С · ${esc(c.name)}</option>`).join("") +
-      Object.values(catalogByName).filter(c => !inStockKeys.has(latinCode(c.name)))
-        .map(c => `<option value="${esc(c.name)}">из 1С · без артикула</option>`).join("");
-    document.getElementById("requestCodes").innerHTML = ordered
-      .map(r => { const k = kitIndex[normCode(r.key)];
+    dlAll.receiptCodes = stockOpts.concat(
+      Object.values(catalogByCode).filter(c => !inStockKeys.has(latinCode(c.code))).map(c => dlOpt(c.code, `из 1С · ${esc(c.name)}`, pk(c.code))),
+      Object.values(catalogByName).filter(c => !inStockKeys.has(latinCode(c.name))).map(c => dlOpt(c.name, "из 1С · без артикула", 0)));
+    dlAll.requestCodes = ordered.map(r => { const k = kitIndex[normCode(r.key)];
         // комплект, который бывает и готовым в остатках, — так же явно, как остальные комплекты
-        if(k) return `<option value="${esc(r.key)}">🧩 комплект ${esc(kitPartsText(k))} · готовых ${fmtNum(Math.max(0, availOf(r.key)))} + можно собрать ${fmtNum(kitBuildable(k))}</option>`;
-        return `<option value="${esc(r.key)}">${r.code ? esc(r.name) + " · " : "без артикула · "}доступно ${fmtNum(availOf(r.key))}</option>`; }).join("") + Object.values(kitIndex)
-      .filter(k => !stockIndex[normCode(k.code)] && !k.auto)
-      .map(k => `<option value="${esc(k.code)}">🧩 комплект ${esc(kitPartsText(k))} · можно собрать ${fmtNum(kitBuildable(k))}</option>`).join("");
+        if(k) return dlOpt(r.key, `🧩 комплект ${esc(kitPartsText(k))} · готовых ${fmtNum(Math.max(0, availOf(r.key)))} + можно собрать ${fmtNum(kitBuildable(k))}`, pk(r.key));
+        return dlOpt(r.key, `${r.code ? esc(r.name) + " · " : "без артикула · "}доступно ${fmtNum(availOf(r.key))}`, pk(r.key)); })
+      .concat(Object.values(kitIndex).filter(k => !stockIndex[normCode(k.code)] && !k.auto)
+        .map(k => dlOpt(k.code, `🧩 комплект ${esc(kitPartsText(k))} · можно собрать ${fmtNum(kitBuildable(k))}`, pk(k.code))));
+    ["stockCodes", "receiptCodes", "requestCodes"].forEach(id => {
+      const a = document.activeElement;
+      renderDl(id, a && a.getAttribute && a.getAttribute("list") === id ? a.value : "");
+    });
   }
 
   // ---------- Render: REQUESTS ----------
