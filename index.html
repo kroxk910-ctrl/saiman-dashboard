@@ -872,6 +872,46 @@
   .idm-breakdown{font-size:14px; color:var(--ink-faint); margin-top:8px; line-height:1.6;}
   .idm-breakdown b{color:var(--ink-dim); font-weight:600; font-family:var(--mono);}
 
+  /* ======================= ПРИЛОЖЕНИЕ (Android): главная, разделы, нижняя панель ======================= */
+  .app-only{display:none !important;}
+  html.app .app-only:not(.view){display:revert !important;}
+  html.app .view.app-only.active{display:block !important;}
+  html.app .tabs{display:none;}
+  html.app #logoutBtnM{display:none !important;}
+  html.app main{padding-bottom:calc(84px + env(safe-area-inset-bottom));}
+  html.app footer{padding-bottom:calc(80px + env(safe-area-inset-bottom));}
+  html.app .toast-stack{bottom:calc(76px + env(safe-area-inset-bottom));}
+  .app-nav{position:fixed; left:0; right:0; bottom:0; z-index:40; display:flex; background:var(--panel); border-top:1px solid var(--line); padding:6px 4px calc(6px + env(safe-area-inset-bottom));}
+  html.app nav.app-nav.app-only{display:flex !important;}
+  .app-nav button{flex:1; background:none; border:0; color:var(--ink-faint); font:inherit; font-size:12px; display:flex; flex-direction:column; align-items:center; gap:2px; padding:4px 0; position:relative; cursor:pointer;}
+  .app-nav button .ic{font-size:22px; line-height:1.1;}
+  .app-nav button.on{color:var(--accent);}
+  .app-nav .dot{position:absolute; top:0; left:calc(50% + 8px); min-width:18px; height:18px; border-radius:9px; background:var(--danger); color:#fff; font-size:11px; line-height:18px; padding:0 5px; font-weight:600;}
+  .home-hi{font-size:20px; font-weight:600; margin:4px 0 14px;}
+  .home-cap{font-size:13px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.04em; margin:16px 0 8px;}
+  .home-item{display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:8px; color:var(--ink); font:inherit; font-size:16px; cursor:pointer;}
+  .home-item .ic{font-size:22px; width:28px; text-align:center;}
+  .home-item .num{margin-left:auto; font-weight:700; font-size:17px; min-width:28px; text-align:center; padding:2px 8px; border-radius:8px; background:var(--panel-2); color:var(--ink-dim);}
+  .home-item .num.hot{background:var(--danger-bg); color:var(--danger);}
+  .home-item .num.warm{background:var(--wait-bg); color:var(--ink);}
+  .home-item.calm{opacity:.75;}
+  .home-quick{display:grid; grid-template-columns:repeat(3,1fr); gap:8px;}
+  .home-quick button{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 6px; color:var(--ink); font:inherit; font-size:14px; display:flex; flex-direction:column; align-items:center; gap:6px; cursor:pointer;}
+  .home-quick button .ic{font-size:22px;}
+  .home-quick button.main{background:var(--accent); border-color:var(--accent); color:var(--accent-ink);}
+  .home-recent{background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden;}
+  .home-recent button{display:flex; gap:10px; align-items:center; width:100%; background:none; border:0; border-bottom:1px solid var(--line); padding:12px 14px; color:var(--ink); font:inherit; font-size:15px; text-align:left; cursor:pointer;}
+  .home-recent button:last-child{border-bottom:0;}
+  .home-recent .what{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink-dim);}
+  .sec-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px;}
+  .sec-tile{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px 14px; text-align:left; color:var(--ink); font:inherit; font-size:16px; font-weight:600; display:flex; flex-direction:column; gap:8px; cursor:pointer; min-height:96px;}
+  .sec-tile .ic{font-size:26px;}
+  .sec-tile .meta{font-size:13px; font-weight:400; color:var(--ink-faint); margin-top:auto;}
+  .sec-tile .meta.hot{color:var(--danger); font-weight:600;}
+  .sec-tile.cur{border-color:var(--accent);}
+  .sec-foot{display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;}
+  .sec-foot button{flex:1 1 40%; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; color:var(--ink); font:inherit; font-size:15px; cursor:pointer;}
+
   /* ======================= ТЕЛЕФОН ======================= */
   .chip-row{display:contents;}
   @media (max-width:720px){
@@ -1164,6 +1204,8 @@
     </div>
   </div>
   <div class="tabs">
+    <button class="tab-btn app-only" data-view="home">Главная</button>
+    <button class="tab-btn app-only" data-view="sections">Разделы</button>
     <button class="tab-btn" data-view="unrealized" data-warehouse-only hidden>Без реализации <span class="count" id="unrealizedCount">—</span></button>
     <button class="tab-btn active" data-view="stock">Остатки <span class="count" id="stockCount">—</span></button>
     <button class="tab-btn" data-view="requests"><span id="requestsTabLabel">Заявки</span> <span class="count" id="requestsCount">—</span></button>
@@ -1176,7 +1218,18 @@
   </div>
 </div>
 
+<nav class="app-nav app-only" id="appNav" aria-label="Разделы">
+  <button type="button" data-nav="home"><span class="ic">🏠</span>Главная</button>
+  <button type="button" data-nav="requests"><span class="ic">📋</span><span id="navReqLabel">Заявки</span><span class="dot" id="navReqDot" hidden></span></button>
+  <button type="button" data-nav="stock"><span class="ic">📦</span>Остатки</button>
+  <button type="button" data-nav="sections"><span class="ic">▦</span>Разделы<span class="dot" id="navSecDot" hidden></span></button>
+</nav>
+
 <main>
+
+  <!-- ============ APP: ГЛАВНАЯ И РАЗДЕЛЫ (только в приложении) ============ -->
+  <section class="view app-only" id="view-home"><div id="homeHost"></div></section>
+  <section class="view app-only" id="view-sections"><div id="sectionsHost"></div></section>
 
   <!-- ============ STOCK VIEW ============ -->
   <section class="view active" id="view-stock">
@@ -1706,6 +1759,7 @@
     finally{ clearTimeout(tm); }
   }
   const SESSION_KEY = "qmt_dashboard_user_v2";
+  const APP_MODE = !!window.QmtApp || /[?&]app=1\b/.test(location.search);   // открыт в Android-приложении (или ?app=1 для проверки)
   const PAYLOAD_KEY = "qmt_dashboard_payload_v1";
   const LAST_KEY = "qmt_dashboard_last_v1";   // последние данные на этом компьютере — чтобы при открытии показать сразу
   function saveLast(data){ try{ if(currentUser) localStorage.setItem(LAST_KEY, JSON.stringify({user: currentUser.name, at: Date.now(), data})); }catch(e){ /* большой ответ / приватный режим */ } }
@@ -3993,6 +4047,7 @@
     renderUnrealized();
     renderPricelistStats(); renderPricelist();
     renderAnalytics();
+    if(APP_MODE){ renderHome(); renderSections(); }
     fillCodeDatalist();
     requestEditor.refresh();
     receiptEditor.refresh();
@@ -5115,6 +5170,99 @@
       try{ app.notify(ev.title, ev.body, "requests"); }catch(e){ /* ignore */ }
     });
   }
+  function appGo(view, chip){
+    openTab(view);
+    if(chip){ const c = document.querySelector(chip); if(c) c.click(); }
+    window.scrollTo(0, 0);
+  }
+  function renderHome(){
+    const host = document.getElementById("homeHost");
+    if(!host || !currentUser) return;
+    const mine = visibleRequests(), wh = isWarehouse();
+    const byStatus = s => mine.filter(r => r.status === s).length;
+    const unreal = wh ? (parseInt(document.getElementById("unrealizedCount").textContent, 10) || 0) : mine.filter(isUnrealized).length;
+    const av = r => r.key && availMap[normCode(r.key)] ? availMap[normCode(r.key)].available : r.qty;
+    const low = stockRows.filter(r => !r.isSection && !isHiddenRow(r) && av(r) > 0 && av(r) < 10).length;
+    const items = wh ? [
+      {ic: "🆕", label: "Новые заявки", n: byStatus(ST_NEW), hot: true, go: () => appGo("requests", '[data-reqfilter="Новая"]')},
+      {ic: "🛠", label: "В подготовке", n: byStatus(ST_PREP), go: () => appGo("requests", '[data-reqfilter="В подготовке"]')},
+      {ic: "✅", label: "Готовы к отгрузке", n: byStatus(ST_READY), go: () => appGo("requests", '[data-reqfilter="Готова к отгрузке"]')},
+      {ic: "🧾", label: "Без реализации", n: unreal, hot: true, go: () => appGo("unrealized")},
+      {ic: "⚠️", label: "Заканчивается (<10)", n: low, warm: true, go: () => appGo("stock", '[data-stockfilter="low"]')}
+    ] : [
+      {ic: "✅", label: "Готовы к отгрузке", n: byStatus(ST_READY), hot: true, go: () => appGo("requests", '[data-reqfilter="Готова к отгрузке"]')},
+      {ic: "⏳", label: "Мои заявки в работе", n: byStatus(ST_NEW) + byStatus(ST_PREP), go: () => appGo("requests", '[data-reqfilter="active"]')},
+      {ic: "🧾", label: "Без реализации", n: unreal, hot: true, go: () => appGo("requests", '[data-reqfilter="all"]')},
+      {ic: "⚠️", label: "Заканчивается (<10)", n: low, warm: true, go: () => appGo("stock", '[data-stockfilter="low"]')}
+    ];
+    const h = new Date().getHours();
+    const hi = h < 5 ? "Доброй ночи" : h < 12 ? "Доброе утро" : h < 18 ? "Добрый день" : "Добрый вечер";
+    const recent = mine.slice().sort((a, b) => b.id - a.id).slice(0, 5);
+    host.innerHTML = `
+      <div class="home-hi">${hi}, ${esc(currentUser.name)}</div>
+      <div class="home-cap">Требует внимания</div>
+      ${items.map((it, i) => `<button type="button" class="home-item${it.n ? "" : " calm"}" data-hi="${i}"><span class="ic">${it.ic}</span><span>${it.label}</span>
+        <span class="num${it.n ? (it.hot ? " hot" : it.warm ? " warm" : "") : ""}">${it.n ? fmtNum(it.n) : "0"}</span></button>`).join("")}
+      <div class="home-cap">Быстро</div>
+      <div class="home-quick">
+        <button type="button" class="main" data-q="req"><span class="ic">＋</span>Заявка</button>
+        ${wh ? `<button type="button" data-q="rec"><span class="ic">🚚</span>Приход</button>` : `<button type="button" data-q="price"><span class="ic">🏷</span>Прайс</button>`}
+        <button type="button" data-q="find"><span class="ic">🔍</span>Найти</button>
+      </div>
+      ${recent.length ? `<div class="home-cap">Последние заявки</div><div class="home-recent">${recent.map(r => `<button type="button" data-rid="${r.id}">
+        <b>${reqNo(r)}</b><span class="what">${esc(itemsShort(r))}${wh ? " · " + esc(r.manager) : ""}</span><span class="badge ${statusClass(r.status)}">${esc(r.status)}</span></button>`).join("")}</div>` : ""}`;
+    host.querySelectorAll("[data-hi]").forEach(b => b.addEventListener("click", () => items[Number(b.dataset.hi)].go()));
+    host.querySelector('[data-q="req"]').addEventListener("click", () => requestForm.open());
+    host.querySelector('[data-q="rec"]')?.addEventListener("click", () => document.getElementById("newReceiptBtn").click());
+    host.querySelector('[data-q="price"]')?.addEventListener("click", () => appGo("pricelist"));
+    host.querySelector('[data-q="find"]').addEventListener("click", () => {
+      appGo("stock", '[data-stockfilter="all"]');
+      setTimeout(() => { const i = document.getElementById("stockSearch"); i.focus(); i.select(); }, 60);
+    });
+    host.querySelectorAll("[data-rid]").forEach(b => b.addEventListener("click", () => {
+      appGo("requests", '[data-reqfilter="all"]');
+      const s = document.getElementById("requestsSearch"); s.value = "№" + b.dataset.rid; renderRequests();
+    }));
+    // точки на нижней панели
+    const reqDot = wh ? byStatus(ST_NEW) : byStatus(ST_READY);
+    const d1 = document.getElementById("navReqDot"); d1.hidden = !reqDot; d1.textContent = reqDot;
+    const d2 = document.getElementById("navSecDot"); d2.hidden = !(wh && unreal); d2.textContent = unreal;
+    document.getElementById("navReqLabel").textContent = seesAll() ? "Заявки" : "Мои";
+  }
+  const SECTION_ICONS = {requests: "📋", stock: "📦", unrealized: "🧾", receipts: "🚚", adjustments: "✏️", revision: "🔎", pricelist: "🏷", analytics: "📊", finance: "💰"};
+  function renderSections(){
+    const host = document.getElementById("sectionsHost");
+    if(!host) return;
+    const cur = (document.querySelector(".tab-btn.active") || {}).dataset || {};
+    const tabs = [...document.querySelectorAll(".tabs .tab-btn")].filter(b => !b.hidden && !b.classList.contains("app-only"));
+    host.innerHTML = `<div class="home-hi">Разделы</div><div class="sec-grid">${tabs.map(b => {
+      const cnt = b.querySelector(".count"), name = b.cloneNode(true);
+      name.querySelectorAll(".count").forEach(x => x.remove());
+      const n = cnt ? cnt.textContent.trim() : "";
+      const hot = cnt && cnt.classList.contains("alert") && n !== "0";
+      return `<button type="button" class="sec-tile${cur.view === b.dataset.view ? " cur" : ""}" data-sec="${b.dataset.view}"><span class="ic">${SECTION_ICONS[b.dataset.view] || "•"}</span>${esc(name.textContent.trim())}
+        ${n && n !== "—" ? `<span class="meta${hot ? " hot" : ""}">${esc(n)}</span>` : ""}</button>`;
+    }).join("")}</div>
+      <div class="sec-foot">
+        <button type="button" id="secNotif">🔔 Уведомления</button>
+        <button type="button" id="secTheme">◐ Тема</button>
+        <button type="button" id="secLogout">⏻ Выйти (${esc(currentUser ? currentUser.name : "")})</button>
+      </div>`;
+    host.querySelectorAll("[data-sec]").forEach(b => b.addEventListener("click", () => appGo(b.dataset.sec)));
+    document.getElementById("secNotif").addEventListener("click", () => document.getElementById("tgBtn").click());
+    document.getElementById("secTheme").addEventListener("click", () => document.getElementById("themeBtn").click());
+    document.getElementById("secLogout").addEventListener("click", () => { if(confirm("Выйти из дашборда?")) document.getElementById("logoutBtn").click(); });
+  }
+  function syncAppNav(view){
+    const on = ["home", "requests", "stock"].includes(view) ? view : "sections";
+    document.querySelectorAll("#appNav [data-nav]").forEach(b => b.classList.toggle("on", b.dataset.nav === on));
+    if(view === "sections") renderSections();
+  }
+  if(APP_MODE){
+    document.documentElement.classList.add("app");
+    document.querySelectorAll("#appNav [data-nav]").forEach(b => b.addEventListener("click", () => appGo(b.dataset.nav)));
+    document.querySelectorAll(".tab-btn").forEach(b => b.addEventListener("click", () => syncAppNav(b.dataset.view)));
+  }
   window.qmtAppChanged = () => { if(document.getElementById("browserNotifBody")) renderBrowserNotif(); };
   window.qmtOpenTab = view => { document.querySelectorAll(".modal-overlay.open").forEach(closeOverlay); openTab(view); };
   // кнопка «Назад» на телефоне: сначала закрывает открытое меню или окно
@@ -5122,6 +5270,8 @@
     if(statusMenuEl){ closeStatusMenu(); return true; }
     const open = [...document.querySelectorAll(".modal-overlay.open")];
     if(open.length){ closeOverlay(open[open.length - 1]); return true; }
+    const cur = document.querySelector(".tab-btn.active");
+    if(APP_MODE && cur && cur.dataset.view !== "home"){ appGo("home"); return true; }
     return false;
   };
 
@@ -5154,6 +5304,7 @@
     } else syncAll(false);
     refreshTgStatus();
     if(!refreshTimer) refreshTimer = setInterval(()=>syncAll(false), 60*1000);
+    if(APP_MODE) appGo("home");
   }
 
   document.getElementById("logoutBtnM").addEventListener("click", ()=> document.getElementById("logoutBtn").click());
